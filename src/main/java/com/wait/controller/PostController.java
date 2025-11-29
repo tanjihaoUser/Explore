@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.wait.entity.domain.Post;
-import com.wait.service.impl.PostServiceImpl;
+import com.wait.service.PostService;
 import com.wait.util.ResponseUtil;
 
 import lombok.RequiredArgsConstructor;
@@ -27,11 +27,11 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @RestController
-@RequestMapping("/posts")
+@RequestMapping("/api/posts")
 @RequiredArgsConstructor
 public class PostController {
 
-    private final PostServiceImpl postService;
+    private final PostService postService;
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> createPost(@RequestBody Post post) {
@@ -42,10 +42,50 @@ public class PostController {
         return ResponseUtil.success(extraFields, post);
     }
 
+    @GetMapping("/{postId}")
+    public ResponseEntity<Map<String, Object>> getPostById(@PathVariable Long postId) {
+        log.info("Getting post by id: {}", postId);
+        Post post = postService.getPostById(postId);
+        if (post == null) {
+            return ResponseUtil.notFound("帖子不存在或已被删除");
+        }
+        return ResponseUtil.success(post);
+    }
+
     @GetMapping("/user/{userId}")
-    public ResponseEntity<Map<String, Object>> getPostsByUserId(@PathVariable Long userId, @RequestParam int page, @RequestParam int size) {
-        log.info("Getting posts for user: {}, page: {}, size: {}", userId, page, size);
+    public ResponseEntity<Map<String, Object>> getPostsByUserId(
+            @PathVariable Long userId,
+            @RequestParam int page,
+            @RequestParam int size,
+            @RequestParam(required = false) Long currentUserId) {
+        log.info("Getting posts for user: {}, page: {}, size: {}, currentUserId: {}", userId, page, size,
+                currentUserId);
         List<Post> posts = postService.getUserPagedPosts(userId, page, size);
+
+        // 如果提供了当前用户ID，填充关系数据
+        if (currentUserId != null && !posts.isEmpty()) {
+            List<Long> postIds = posts.stream()
+                    .map(Post::getId)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(java.util.stream.Collectors.toList());
+            List<Post> postsWithRelation = postService.getPostsByIdsWithRelation(postIds, currentUserId);
+
+            // 保持原有顺序，更新关系数据
+            java.util.Map<Long, Post> relationMap = postsWithRelation.stream()
+                    .collect(java.util.stream.Collectors.toMap(Post::getId, p -> p));
+            for (Post post : posts) {
+                Post postWithRelation = relationMap.get(post.getId());
+                if (postWithRelation != null) {
+                    post.setIsLiked(postWithRelation.getIsLiked());
+                    post.setIsFavorited(postWithRelation.getIsFavorited());
+                    post.setLikeCount(postWithRelation.getLikeCount());
+                    post.setFavoriteCount(postWithRelation.getFavoriteCount());
+                    post.setCommentCount(postWithRelation.getCommentCount());
+                    post.setUsername(postWithRelation.getUsername());
+                }
+            }
+        }
+
         return ResponseUtil.success(posts);
     }
 
@@ -60,7 +100,8 @@ public class PostController {
     }
 
     @DeleteMapping()
-    public ResponseEntity<Map<String, Object>> deletePost(@RequestParam("userId") Long userId, @RequestParam("postId") Long postId) {
+    public ResponseEntity<Map<String, Object>> deletePost(@RequestParam("userId") Long userId,
+            @RequestParam("postId") Long postId) {
         log.info("Deleting post: {}, user: {}", postId, userId);
         int rowsAffected = postService.delete(userId, postId);
         Map<String, Object> data = new HashMap<>();

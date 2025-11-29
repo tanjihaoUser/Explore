@@ -39,4 +39,18 @@ public interface PostMapper {
     int countByUserId(Long userId);
 
     List<Post> selectByIds(@Param("ids") List<Long> ids);
+
+    /**
+     * 批量查询帖子的用户ID映射（仅返回postId和userId，用于优化性能）
+     * @param ids 帖子ID列表
+     * @return 帖子列表（只包含id和userId字段）
+     */
+    List<Post> selectUserIdsByIds(@Param("ids") List<Long> ids);
+
+    /**
+     * 统计用户的所有帖子数据（帖子数、点赞总数、评论总数）
+     * @param userId 用户ID
+     * @return 统计数据Map，包含postCount, totalLikeCount, totalCommentCount
+     */
+    java.util.Map<String, Object> selectUserStatistics(@Param("userId") Long userId);
 }

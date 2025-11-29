@@ -1,23 +1,33 @@
 package com.wait.controller;
 
-import com.wait.entity.domain.UserSession;
-import com.wait.service.SessionService;
-import com.wait.util.ResponseUtil;
-import lombok.Data;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
 import java.util.HashMap;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.wait.entity.domain.UserSession;
+import com.wait.service.SessionService;
+import com.wait.util.ResponseUtil;
+
+import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * 使用Redis中的hash存储session信息
- * */
+ */
 @Slf4j
 @RestController
-@RequestMapping("/sessions")
+@RequestMapping("/api/sessions")
 public class SessionController {
 
     @Autowired
@@ -29,7 +39,7 @@ public class SessionController {
      */
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login(@RequestBody LoginRequest request) {
-            UserSession session = sessionService.createSession(request.getUsername(), request.getPassword());
+        UserSession session = sessionService.createSession(request.getUsername(), request.getPassword());
 
         Map<String, Object> extraFields = new HashMap<>();
         extraFields.put("sessionId", session.getSessionId());
@@ -42,7 +52,7 @@ public class SessionController {
      */
     @GetMapping("/{sessionId}")
     public ResponseEntity<Map<String, Object>> getSession(@PathVariable String sessionId) {
-            UserSession session = sessionService.getSession(sessionId);
+        UserSession session = sessionService.getSession(sessionId);
         return ResponseUtil.success(session);
     }
 
@@ -54,7 +64,7 @@ public class SessionController {
     public ResponseEntity<Map<String, Object>> updateSession(
             @PathVariable String sessionId,
             @RequestBody UserSession sessionUpdate) {
-            UserSession updatedSession = sessionService.updateSession(sessionId, sessionUpdate);
+        UserSession updatedSession = sessionService.updateSession(sessionId, sessionUpdate);
         return ResponseUtil.success(updatedSession);
     }
 
@@ -66,7 +76,7 @@ public class SessionController {
     public ResponseEntity<Map<String, Object>> partialUpdateSession(
             @PathVariable String sessionId,
             @RequestBody Map<String, Object> updates) {
-            UserSession updatedSession = sessionService.partialUpdateSession(sessionId, updates);
+        UserSession updatedSession = sessionService.partialUpdateSession(sessionId, updates);
         return ResponseUtil.success(updatedSession);
     }
 
@@ -76,7 +86,7 @@ public class SessionController {
      */
     @PostMapping("/{sessionId}/activity")
     public ResponseEntity<Map<String, Object>> recordActivity(@PathVariable String sessionId) {
-            sessionService.recordActivity(sessionId);
+        sessionService.recordActivity(sessionId);
         return ResponseUtil.success("活动记录成功");
     }
 
@@ -88,8 +98,8 @@ public class SessionController {
     public ResponseEntity<Map<String, Object>> updateCurrentPage(
             @PathVariable String sessionId,
             @RequestBody Map<String, String> request) {
-            String currentPage = request.get("currentPage");
-            sessionService.updateCurrentPage(sessionId, currentPage);
+        String currentPage = request.get("currentPage");
+        sessionService.updateCurrentPage(sessionId, currentPage);
         return ResponseUtil.success("页面更新成功");
     }
 
@@ -101,7 +111,7 @@ public class SessionController {
     public ResponseEntity<Map<String, Object>> updatePreferences(
             @PathVariable String sessionId,
             @RequestBody PreferenceRequest request) {
-            sessionService.updatePreferences(sessionId, request.getTheme(), request.getLanguage());
+        sessionService.updatePreferences(sessionId, request.getTheme(), request.getLanguage());
         return ResponseUtil.success("偏好更新成功");
     }
 
@@ -113,7 +123,7 @@ public class SessionController {
     public ResponseEntity<Map<String, Object>> setAttribute(
             @PathVariable String sessionId,
             @RequestBody AttributeRequest request) {
-            sessionService.setAttribute(sessionId, request.getKey(), request.getValue());
+        sessionService.setAttribute(sessionId, request.getKey(), request.getValue());
         return ResponseUtil.success("属性设置成功");
     }
 
@@ -125,7 +135,7 @@ public class SessionController {
     public ResponseEntity<Map<String, Object>> getAttribute(
             @PathVariable String sessionId,
             @PathVariable String key) {
-            Object value = sessionService.getAttribute(sessionId, key);
+        Object value = sessionService.getAttribute(sessionId, key);
         Map<String, Object> data = new HashMap<>();
         data.put("key", key);
         data.put("value", value);
@@ -138,7 +148,7 @@ public class SessionController {
      */
     @DeleteMapping("/{sessionId}")
     public ResponseEntity<Map<String, Object>> logout(@PathVariable String sessionId) {
-            sessionService.deleteSession(sessionId);
+        sessionService.deleteSession(sessionId);
         return ResponseUtil.success("登出成功");
     }
 

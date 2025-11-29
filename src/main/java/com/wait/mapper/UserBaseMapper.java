@@ -7,6 +7,7 @@ import com.wait.entity.type.ReadStrategyType;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper
@@ -20,14 +21,25 @@ public interface UserBaseMapper {
 
     UserBase selectByEmail(@Param("email") String email);
 
-    int updateLastLoginTime(@Param("userId") Long userId);
+    int updateLastLoginTime(@Param("userId") Long userId, @Param("lastLoginTime") LocalDateTime lastLoginTime);
 
     int updateStatus(@Param("userId") Long userId, @Param("status") Integer status);
 
     void updateById(UserBase userBase);
+    
+    void insert(UserBase userBase);
 
     Long countUsers();
+    
+    // 检查用户名是否存在
+    int countByUsername(@Param("username") String username);
+    
+    // 检查邮箱是否存在
+    int countByEmail(@Param("email") String email);
 
     // 批量查询
     List<UserBase> selectByIds(@Param("ids") List<Long> ids);
+    
+    // 查询所有用户（用于管理操作）
+    List<UserBase> selectAll();
 }

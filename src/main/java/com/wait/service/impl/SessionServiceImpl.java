@@ -1,8 +1,10 @@
 package com.wait.service.impl;
 
+import com.wait.entity.domain.UserBase;
 import com.wait.entity.domain.UserSession;
 import com.wait.mapper.UserSessionMapper;
 import com.wait.service.SessionService;
+import com.wait.service.UserService;
 import com.wait.util.instance.HashMappingUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +22,7 @@ import java.util.stream.Collectors;
 public class SessionServiceImpl implements SessionService {
 
     private final UserSessionMapper userSessionMapper;
+    private final UserService userService;
     private final HashMappingUtil hashMappingUtil;
     // 安全性更高，不可预测，线程安全时效率更高
     private final SecureRandom secureRandom = new SecureRandom();
@@ -27,18 +30,24 @@ public class SessionServiceImpl implements SessionService {
     @Override
     public UserSession createSession(String username, String password) {
         //  与isEmpty相比，hasText更严格，还会检查字符串只包含空白字符，如 "  " 判为false，而isEmpty会判为true
-        if (!StringUtils.hasText(username)) {
-            throw new IllegalArgumentException("用户名不能为空");
+        if (!StringUtils.hasText(username) || !StringUtils.hasText(password)) {
+            throw new IllegalArgumentException("用户名和密码不能为空");
+        }
+        
+        // 验证用户凭据
+        UserBase user = userService.validateUser(username, password);
+        if (user == null) {
+            throw new IllegalArgumentException("用户名或密码错误");
         }
         
         String sessionId = generateSessionId();
 
-        UserSession session = new UserSession(sessionId, "1001", username, System.currentTimeMillis(),
+        UserSession session = new UserSession(sessionId, user.getId().toString(), username, System.currentTimeMillis(),
                 "/home", 1, "light", "zh-CN", new HashMap<>());
 
         userSessionMapper.insert(session);
 
-        log.info("created session: {}", sessionId);
+        log.info("created session for user: {} (userId: {}), sessionId: {}", username, user.getId(), sessionId);
         return session;
     }
 

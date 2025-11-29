@@ -1,23 +1,25 @@
 package com.wait.controller;
 
-import com.wait.entity.domain.UserBase;
-import com.wait.entity.domain.UserDetail;
-import com.wait.service.impl.TypeCacheServiceImpl;
-import com.wait.util.BoundUtil;
-import lombok.extern.slf4j.Slf4j;
+import java.util.Set;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Set;
+import com.wait.entity.domain.UserBase;
+import com.wait.entity.domain.UserDetail;
+import com.wait.service.impl.TypeCacheServiceImpl;
+import com.wait.util.BoundUtil;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 测试Redis基础类型的缓存与转换
- * */
+ */
 @RestController
-@RequestMapping("/typeCache")
+@RequestMapping("/api/typeCache")
 @Slf4j
 public class TypeCacheController {
 

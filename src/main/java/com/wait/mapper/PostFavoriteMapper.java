@@ -47,6 +47,11 @@ public interface PostFavoriteMapper {
      * 批量插入（用于数据恢复/同步）
      */
     int batchInsert(List<PostFavorite> favorites);
+
+    /**
+     * 查询所有收藏关系（用于数据加载）
+     */
+    List<PostFavorite> selectAll();
 }
 
 

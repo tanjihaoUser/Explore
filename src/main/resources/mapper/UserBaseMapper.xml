@@ -9,34 +9,37 @@
         <id column="id" property="id" />
         <result column="username" property="username" />
         <result column="email" property="email" />
+        <result column="password_hash" property="passwordHash" />
+        <result column="salt" property="salt" />
         <result column="phone" property="phone" />
         <result column="status" property="status" />
         <result column="user_type" property="userType" />
         <result column="create_time" property="createTime" />
         <result column="update_time" property="updateTime" />
         <result column="last_login_time" property="lastLoginTime" />
+        <result column="password_update_time" property="passwordUpdateTime" />
     </resultMap>
 
     <!-- 根据ID查询用户基础信息 -->
     <select id="selectById" parameterType="java.lang.Long" resultMap="BaseResultMap">
-        SELECT id, username, email, phone, status, user_type,
-        create_time, update_time, last_login_time
+        SELECT id, username, email, password_hash, salt, phone, status, user_type,
+        create_time, update_time, last_login_time, password_update_time
         FROM user_base
         WHERE id = #{id} AND status != 0
     </select>
 
     <!-- 根据用户名查询 -->
     <select id="selectByUsername" parameterType="java.lang.String" resultMap="BaseResultMap">
-        SELECT id, username, email, phone, status, user_type,
-        create_time, update_time, last_login_time
+        SELECT id, username, email, password_hash, salt, phone, status, user_type,
+        create_time, update_time, last_login_time, password_update_time
         FROM user_base
         WHERE username = #{username} AND status != 0
     </select>
 
     <!-- 根据邮箱查询 -->
     <select id="selectByEmail" parameterType="java.lang.String" resultMap="BaseResultMap">
-        SELECT id, username, email, phone, status, user_type,
-        create_time, update_time, last_login_time
+        SELECT id, username, email, password_hash, salt, phone, status, user_type,
+        create_time, update_time, last_login_time, password_update_time
         FROM user_base
         WHERE email = #{email} AND status != 0
     </select>
@@ -44,17 +47,37 @@
     <!-- 更新最后登录时间 -->
     <update id="updateLastLoginTime">
         UPDATE user_base
-        SET last_login_time = NOW()
+        SET last_login_time = #{lastLoginTime}, update_time = NOW()
         WHERE id = #{userId}
     </update>
 
     <!-- 更新用户基础信息 -->
     <update id="updateById">
         UPDATE user_base
-        SET username = #{username}, email = #{email}, phone = #{phone}, 
-        user_type = #{userType}, status = #{status}, update_time = NOW()
+        <set>
+            <if test="username != null">username = #{username},</if>
+            <if test="email != null">email = #{email},</if>
+            <if test="passwordHash != null">password_hash = #{passwordHash},</if>
+            <if test="salt != null">salt = #{salt},</if>
+            <if test="phone != null">phone = #{phone},</if>
+            <if test="userType != null">user_type = #{userType},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="passwordUpdateTime != null">password_update_time = #{passwordUpdateTime},</if>
+            update_time = NOW()
+        </set>
         WHERE id = #{id}
     </update>
+    
+    <!-- 插入新用户 -->
+    <insert id="insert" parameterType="com.wait.entity.domain.UserBase" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_base (
+            username, email, password_hash, salt, phone, status, user_type,
+            create_time, update_time, password_update_time
+        ) VALUES (
+            #{username}, #{email}, #{passwordHash}, #{salt}, #{phone}, #{status}, #{userType},
+            #{createTime}, #{updateTime}, #{passwordUpdateTime}
+        )
+    </insert>
 
     <!-- 更新用户状态 -->
     <update id="updateStatus">
@@ -67,10 +90,20 @@
     <select id="countUsers" resultType="java.lang.Long">
         SELECT COUNT(*) FROM user_base WHERE status != 0
     </select>
+    
+    <!-- 检查用户名是否存在 -->
+    <select id="countByUsername" parameterType="java.lang.String" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM user_base WHERE username = #{username}
+    </select>
+    
+    <!-- 检查邮箱是否存在 -->
+    <select id="countByEmail" parameterType="java.lang.String" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM user_base WHERE email = #{email}
+    </select>
 
     <select id="selectByIds" parameterType="java.util.List" resultMap="BaseResultMap">
-        SELECT id, username, email, phone, status, user_type,
-        create_time, update_time, last_login_time
+        SELECT id, username, email, password_hash, salt, phone, status, user_type,
+        create_time, update_time, last_login_time, password_update_time
         FROM user_base
         WHERE id IN
         <foreach collection="ids" item="id" open="(" separator="," close=")">
@@ -81,6 +114,15 @@
         <foreach collection="ids" item="id" open="FIELD(id," separator="," close=")">
             #{id}
         </foreach>
+    </select>
+    
+    <!-- 查询所有用户 -->
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT id, username, email, password_hash, salt, phone, status, user_type,
+        create_time, update_time, last_login_time, password_update_time
+        FROM user_base
+        WHERE status != 0
+        ORDER BY id
     </select>
 
 </mapper>

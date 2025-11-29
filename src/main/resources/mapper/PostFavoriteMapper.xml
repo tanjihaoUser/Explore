@@ -42,5 +42,10 @@
         </foreach>
     </insert>
 
+    <select id="selectAll" resultType="com.wait.entity.domain.PostFavorite">
+        SELECT user_id AS userId, post_id AS postId, created_at AS createdAt 
+        FROM post_favorite
+    </select>
+
 </mapper>
 

@@ -3,9 +3,11 @@ package com.wait.service.impl;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.springframework.stereotype.Service;
@@ -14,6 +16,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wait.config.script.TimeLineScripts;
 import com.wait.entity.domain.Post;
 import com.wait.mapper.PostMapper;
+import com.wait.service.CommentService;
+import com.wait.service.HotRankingService;
+import com.wait.service.PostService;
+import com.wait.service.RankingService;
+import com.wait.service.RelationService;
+import com.wait.service.TimelineSortedSetService;
+import com.wait.service.UserService;
 import com.wait.util.BoundUtil;
 
 import lombok.RequiredArgsConstructor;
@@ -22,7 +31,7 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @Slf4j
 @RequiredArgsConstructor
-public class PostServiceImpl {
+public class PostServiceImpl implements PostService {
 
     private final PostMapper postMapper;
 
@@ -31,6 +40,12 @@ public class PostServiceImpl {
     private final ObjectMapper redisObjectMapper;
 
     private final BoundUtil boundUtil;
+    private final TimelineSortedSetService timelineSortedSetService;
+    private final HotRankingService hotRankingService;
+    private final RankingService rankingService;
+    private final RelationService relationService;
+    private final CommentService commentService;
+    private final UserService userService;
 
     private static final String POST_PREFIX = "post:";
     private static final String USER_POST_REL_PREFIX = "user:post:rel:";
@@ -41,6 +56,7 @@ public class PostServiceImpl {
     // Redis中保存用户帖子的上限（测试环境设置为5）
     private static final int USER_POST_LIST_MAX_SIZE = 5;
 
+    @Override
     public Long insert(Post post) {
         post.setLikeCount(0);
         post.setCommentCount(0);
@@ -82,6 +98,25 @@ public class PostServiceImpl {
                     removedCount, post.getUserId());
         }
 
+        // 新增：添加到时间线 Sorted Set（使用当前时间作为时间戳）
+        long publishTime = System.currentTimeMillis();
+        try {
+            timelineSortedSetService.publishToTimeline(post.getUserId(), postId, publishTime);
+            log.debug("Added post {} to timeline", postId);
+        } catch (Exception e) {
+            log.error("Failed to add post {} to timeline", postId, e);
+            // 不影响主流程，继续执行
+        }
+
+        // 新增：初始化热度分数（可选，如果帖子初始时就有统计数据）
+        try {
+            hotRankingService.updateHotScore(postId);
+            log.debug("Initialized hot score for post {}", postId);
+        } catch (Exception e) {
+            log.error("Failed to initialize hot score for post {}", postId, e);
+            // 不影响主流程，继续执行
+        }
+
         return postId;
     }
 
@@ -101,6 +136,7 @@ public class PostServiceImpl {
      * - 内存可控（只缓存最新N条）
      * - 用户体验好（可以查看所有历史）
      */
+    @Override
     public List<Post> getUserPagedPosts(Long userId, int page, int pageSize) {
         String key = USER_POST_REL_PREFIX + userId;
 
@@ -233,6 +269,37 @@ public class PostServiceImpl {
     }
 
     /**
+     * 根据ID获取单个帖子详情
+     * 优先从Redis缓存获取，缓存未命中时从数据库查询
+     */
+    @Override
+    public Post getPostById(Long postId) {
+        if (postId == null) {
+            return null;
+        }
+
+        // 1. 先从Redis缓存获取
+        String cacheKey = POST_PREFIX + postId;
+        Post cachedPost = boundUtil.get(cacheKey, Post.class);
+        if (cachedPost != null) {
+            log.debug("Post {} found in cache", postId);
+            return cachedPost;
+        }
+
+        // 2. 缓存未命中，从数据库查询
+        Post post = postMapper.selectById(postId);
+        if (post != null && post.getIsDeleted() == 0) {
+            // 3. 将查询结果写入Redis缓存
+            boundUtil.set(cacheKey, post, POST_EXPIRE_TIME, TimeUnit.SECONDS);
+            log.debug("Post {} loaded from database and cached", postId);
+            return post;
+        }
+
+        log.debug("Post {} not found or deleted", postId);
+        return null;
+    }
+
+    /**
      * 批量获取帖子详情
      * 优化：使用批量查询避免N+1问题，同时优先从Redis缓存获取
      * 
@@ -242,6 +309,7 @@ public class PostServiceImpl {
      * 3. 将数据库查询结果写入Redis缓存
      * 4. 保持原有顺序（按postIds的顺序）
      */
+    @Override
     public List<Post> getPostsByIds(List<Long> postIds) {
         if (postIds == null || postIds.isEmpty()) {
             return Collections.emptyList();
@@ -297,11 +365,103 @@ public class PostServiceImpl {
     }
 
     /**
+     * 批量获取帖子详情，并填充当前用户的点赞、收藏状态和统计数据
+     * 优化：一次请求返回所有需要的数据，避免前端多次请求
+     */
+    @Override
+    public List<Post> getPostsByIdsWithRelation(List<Long> postIds, Long currentUserId) {
+        if (postIds == null || postIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 1. 获取帖子基本信息
+        List<Post> posts = getPostsByIds(postIds);
+        if (posts.isEmpty()) {
+            return posts;
+        }
+
+        // 2. 批量获取统计数据（点赞数、收藏数、评论数）
+        Map<Long, Long> likeCounts = new HashMap<>();
+        Map<Long, Long> favoriteCounts = new HashMap<>();
+        Map<Long, Integer> commentCounts = commentService.batchGetCommentCounts(postIds);
+
+        for (Post post : posts) {
+            Long postId = post.getId();
+            if (postId != null) {
+                likeCounts.put(postId, relationService.getLikeCount(postId));
+                favoriteCounts.put(postId, relationService.getFavoriteCount(postId));
+            }
+        }
+
+        // 3. 如果提供了当前用户ID，批量查询点赞和收藏状态
+        Map<Long, Boolean> likedMap = Collections.emptyMap();
+        Map<Long, Boolean> favoritedMap = Collections.emptyMap();
+        if (currentUserId != null) {
+            likedMap = relationService.batchCheckLiked(currentUserId, postIds);
+            favoritedMap = relationService.batchCheckFavorited(currentUserId, postIds);
+        }
+
+        // 4. 批量获取用户名（从帖子中提取userId，去重后批量查询）
+        Set<Long> userIds = posts.stream()
+                .map(Post::getUserId)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        Map<Long, String> usernameMap = new HashMap<>();
+        for (Long userId : userIds) {
+            try {
+                com.wait.entity.domain.UserBase user = userService.findById(userId);
+                if (user != null && user.getUsername() != null) {
+                    usernameMap.put(userId, user.getUsername());
+                }
+            } catch (Exception e) {
+                log.warn("Failed to get username for user {}", userId, e);
+            }
+        }
+
+        // 5. 填充数据到Post对象
+        for (Post post : posts) {
+            Long postId = post.getId();
+            if (postId != null) {
+                // 填充统计数据
+                Long likeCount = likeCounts.get(postId);
+                if (likeCount != null) {
+                    post.setLikeCount(likeCount.intValue());
+                }
+                Long favoriteCount = favoriteCounts.get(postId);
+                if (favoriteCount != null) {
+                    post.setFavoriteCount(favoriteCount.intValue());
+                }
+                Integer commentCount = commentCounts.get(postId);
+                if (commentCount != null) {
+                    post.setCommentCount(commentCount);
+                }
+
+                // 填充关系状态（如果提供了当前用户ID）
+                if (currentUserId != null) {
+                    post.setIsLiked(likedMap.getOrDefault(postId, false));
+                    post.setIsFavorited(favoritedMap.getOrDefault(postId, false));
+                }
+
+                // 填充用户名
+                if (post.getUserId() != null) {
+                    String username = usernameMap.get(post.getUserId());
+                    if (username != null) {
+                        post.setUsername(username);
+                    }
+                }
+            }
+        }
+
+        return posts;
+    }
+
+    /**
      * 更新帖子
      * 使用Cache-Aside策略：先更新数据库，然后更新缓存
      * 注意：BoundUtil.set() 会自动使用 RedisTemplate 的序列化器（Jackson2JsonRedisSerializer）
      * 将 Post 对象序列化为 JSON，无需手动序列化
      */
+    @Override
     public int update(Post post) {
         Long postId = post.getId();
         if (postId == null) {
@@ -321,7 +481,94 @@ public class PostServiceImpl {
         boundUtil.set(cacheKey, post, POST_EXPIRE_TIME, TimeUnit.SECONDS);
         log.debug("Updated post cache: {}", postId);
 
+        // 新增：如果评论数变化，更新排行榜和热度分数（可选）
+        // 注意：这里假设评论数是通过Post的commentCount字段更新的
+        // 如果需要更精确的控制，可以在评论Service中直接调用排行榜更新方法
+        try {
+            hotRankingService.updateHotScore(postId);
+            log.debug("Updated hot score for post {} after update", postId);
+        } catch (Exception e) {
+            log.error("Failed to update hot score for post {}", postId, e);
+            // 不影响主流程，继续执行
+        }
+
         return rowsAffected;
+    }
+
+    /**
+     * 评论数更新时调用，更新排行榜和热度分数
+     * 
+     * @param postId 帖子ID
+     */
+    @Override
+    public void onCommentCountChanged(Long postId) {
+        if (postId == null) {
+            return;
+        }
+        try {
+            // 更新评论排行榜
+            rankingService.onComment(postId);
+            // 更新热度分数
+            hotRankingService.onComment(postId);
+            log.debug("Updated ranking and hot score for post {} due to comment count change", postId);
+        } catch (Exception e) {
+            log.error("Failed to update ranking/hot score for post {} due to comment", postId, e);
+            // 不影响主流程
+        }
+    }
+
+    /**
+     * 增加评论数
+     * 
+     * @param postId 帖子ID
+     */
+    @Override
+    public void incrementCommentCount(Long postId) {
+        if (postId == null) {
+            return;
+        }
+        try {
+            // 更新数据库
+            Post post = postMapper.selectById(postId);
+            if (post != null) {
+                post.setCommentCount((post.getCommentCount() != null ? post.getCommentCount() : 0) + 1);
+                postMapper.update(post);
+                // 更新缓存
+                boundUtil.set(POST_PREFIX + postId, post, POST_EXPIRE_TIME, TimeUnit.SECONDS);
+            }
+            // 更新排行榜和热度
+            onCommentCountChanged(postId);
+            log.debug("Incremented comment count for post {}", postId);
+        } catch (Exception e) {
+            log.error("Failed to increment comment count for post {}", postId, e);
+        }
+    }
+
+    /**
+     * 减少评论数
+     * 
+     * @param postId 帖子ID
+     */
+    @Override
+    public void decrementCommentCount(Long postId) {
+        if (postId == null) {
+            return;
+        }
+        try {
+            // 更新数据库
+            Post post = postMapper.selectById(postId);
+            if (post != null && post.getCommentCount() != null && post.getCommentCount() > 0) {
+                post.setCommentCount(post.getCommentCount() - 1);
+                postMapper.update(post);
+                // 更新缓存
+                boundUtil.set(POST_PREFIX + postId, post, POST_EXPIRE_TIME, TimeUnit.SECONDS);
+            }
+            // 更新排行榜和热度
+            onCommentCountChanged(postId);
+            log.debug("Decremented comment count for post {}", postId);
+        } catch (Exception e) {
+            log.error("Failed to decrement comment count for post {}", postId, e);
+        }
     }
 
     /**
@@ -339,6 +586,7 @@ public class PostServiceImpl {
      * - 可以在删除后异步从数据库加载一条新帖子补充到列表尾部
      * - 但会增加系统复杂度，需要权衡性能和一致性
      */
+    @Override
     public int delete(Long userId, Long postId) {
         // 1. 从数据库删除（逻辑删除）
         int rowsAffected = postMapper.delete(postId);
@@ -364,6 +612,19 @@ public class PostServiceImpl {
         } else {
             log.warn("Post {} not found in user {} post list cache", postId, userId);
         }
+
+        // 新增：从时间线移除帖子
+        try {
+            timelineSortedSetService.removeFromTimeline(userId, postId);
+            log.debug("Removed post {} from timeline", postId);
+        } catch (Exception e) {
+            log.error("Failed to remove post {} from timeline", postId, e);
+            // 不影响主流程，继续执行
+        }
+
+        // 新增：从排行榜移除（可选，如果需要）
+        // 删除的帖子通常不需要立即从排行榜移除，可以等定期清理时自然过期
+        // 如果需要立即移除，可以在这里调用相应的服务
 
         return rowsAffected;
     }

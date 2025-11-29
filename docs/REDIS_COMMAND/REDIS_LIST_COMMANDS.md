@@ -1,14 +1,27 @@
-# Redis List 命令列表
-
-
+# List 命令列表
 
 本文档详细说明所有 Redis List 命令的使用场景和示例代码。
+
+Redis List 是一个双向链表，支持在列表的两端进行推入和弹出操作。List 非常适合实现队列、栈、时间线等功能，是 Redis 中用于存储有序列表的主要数据结构。
+
+
+
+## 使用频率说明
+
+- **⭐⭐⭐ 极高频率**：几乎每个使用 List 的场景都会使用
+- **⭐⭐ 高频**：大多数场景会使用
+- **⭐ 中频**：特定场景使用
+- **无标记**：低频或特殊场景使用
 
 
 
 ## 1. 基础操作
 
-### LPUSH - 左侧推入
+### LPUSH - 左侧推入 ⭐⭐⭐
+
+**使用频率：** ⭐⭐⭐ 极高频率
+
+**说明：** LPUSH 是 List 类型最常用的推入命令之一，用于在列表头部添加元素。在时间线、消息队列等场景中使用频率极高。
 
 **Redis命令：** `LPUSH key element [element ...]`
 
@@ -56,7 +69,11 @@ boundUtil.leftPush(key, value1, value2, ...);
 
 
 
-### RPUSH - 右侧推入
+### RPUSH - 右侧推入 ⭐⭐⭐
+
+**使用频率：** ⭐⭐⭐ 极高频率
+
+**说明：** RPUSH 用于在列表尾部添加元素，与 LPUSH 配合可以实现队列、栈等数据结构。在队列、日志追加等场景中使用频率极高。
 
 **Redis命令：** `RPUSH key element [element ...]`
 
@@ -98,7 +115,11 @@ boundUtil.rightPush(key, value1, value2, ...);
 
 
 
-### LPOP - 左侧弹出
+### LPOP - 左侧弹出 ⭐⭐
+
+**使用频率：** ⭐⭐ 高频
+
+**说明：** LPOP 用于移除并返回列表头部的元素，在栈实现、消息队列消费等场景中使用频率较高。
 
 **Redis命令：** `LPOP key`
 
@@ -141,7 +162,11 @@ boundUtil.leftPop(key, Class<T> clazz);
 
 
 
-### RPOP - 右侧弹出
+### RPOP - 右侧弹出 ⭐⭐
+
+**使用频率：** ⭐⭐ 高频
+
+**说明：** RPOP 用于移除并返回列表尾部的元素，在队列消费、获取最旧元素等场景中使用频率较高。
 
 **Redis命令：** `RPOP key`
 
@@ -177,7 +202,11 @@ boundUtil.rightPop(key, Class<T> clazz);
 
 
 
-### LRANGE - 获取列表
+### LRANGE - 获取列表 ⭐⭐⭐
+
+**使用频率：** ⭐⭐⭐ 极高频率
+
+**说明：** LRANGE 用于获取列表中指定范围的元素，是 List 类型最常用的查询命令。在分页查询、获取最新N条等场景中使用频率极高。
 
 **Redis命令：** `LRANGE key start stop`
 
@@ -246,7 +275,11 @@ boundUtil.range(key, start, end, Class<T> clazz);
 
 
 
-### LLEN - 获取长度
+### LLEN - 获取长度 ⭐⭐
+
+**使用频率：** ⭐⭐ 高频
+
+**说明：** LLEN 用于获取列表中元素的数量，在统计、分页计算、判断列表是否为空等场景中使用频率较高。
 
 **Redis命令：** `LLEN key`
 
@@ -300,7 +333,11 @@ boundUtil.listSize(key);
 
 
 
-### LTRIM - 修剪列表
+### LTRIM - 修剪列表 ⭐⭐
+
+**使用频率：** ⭐⭐ 高频
+
+**说明：** LTRIM 用于限制列表大小，只保留指定范围的元素，删除其他元素。在内存管理、限制列表大小等场景中使用频率较高。
 
 **Redis命令：** `LTRIM key start stop`
 
@@ -362,7 +399,11 @@ boundUtil.trim(key, start, end);
 
 ## 2. 元素操作
 
-### LREM - 移除指定值
+### LREM - 移除指定值 ⭐⭐
+
+**使用频率：** ⭐⭐ 高频
+
+**说明：** LREM 用于从列表中移除指定值的元素，在删除特定元素、清理重复数据等场景中使用频率较高。
 
 **Redis命令：** `LREM key count element`
 
@@ -427,7 +468,11 @@ boundUtil.listRemoveAll(key, value);          // 移除所有匹配的元素（c
 
 
 
-### LINDEX - 获取指定索引的元素
+### LINDEX - 获取指定索引的元素 ⭐
+
+**使用频率：** ⭐ 中频
+
+**说明：** LINDEX 用于获取列表中指定索引位置的元素（不删除），但性能较差（O(N)），应避免频繁使用。
 
 **Redis命令：** `LINDEX key index`
 
@@ -488,7 +533,11 @@ boundUtil.listIndex(key, index, Class<T> clazz);
 
 
 
-### LSET - 设置指定索引的元素
+### LSET - 设置指定索引的元素 ⭐
+
+**使用频率：** ⭐ 中频
+
+**说明：** LSET 用于设置列表中指定索引位置的元素值，在需要更新特定位置数据的场景中使用。
 
 **Redis命令：** `LSET key index element`
 
@@ -545,7 +594,11 @@ boundUtil.listSet(key, index, value);
 
 
 
-### LINSERT - 在指定元素前后插入
+### LINSERT - 在指定元素前后插入 ⭐
+
+**使用频率：** ⭐ 中频
+
+**说明：** LINSERT 用于在列表中指定元素的前面或后面插入新元素，但性能较差（O(N)），应避免在大列表中使用。
 
 **Redis命令：** `LINSERT key BEFORE|AFTER pivot element`
 
@@ -604,7 +657,11 @@ boundUtil.listInsert(key, pivot, value, false);  // 在pivot后面插入（AFTER
 
 ## 3. 阻塞操作
 
-### BLPOP - 阻塞式从左侧弹出
+### BLPOP - 阻塞式从左侧弹出 ⭐⭐
+
+**使用频率：** ⭐⭐ 高频
+
+**说明：** BLPOP 是阻塞式弹出命令，如果列表为空会阻塞等待直到有元素可用或超时。在消息队列、任务队列等需要阻塞消费的场景中使用频率较高。
 
 **Redis命令：** `BLPOP key [key ...] timeout`
 
@@ -675,7 +732,11 @@ boundUtil.blockLeftPop(key, timeout, TimeUnit.SECONDS, Class<T> clazz);
 
 
 
-### BRPOP - 阻塞式从右侧弹出
+### BRPOP - 阻塞式从右侧弹出 ⭐⭐
+
+**使用频率：** ⭐⭐ 高频
+
+**说明：** BRPOP 是阻塞式弹出命令，如果列表为空会阻塞等待直到有元素可用或超时。在 FIFO 队列、延迟任务处理等场景中使用频率较高。
 
 **Redis命令：** `BRPOP key [key ...] timeout`
 
@@ -731,7 +792,11 @@ boundUtil.blockRightPop(key, timeout, TimeUnit.SECONDS, Class<T> clazz);
 
 ## 4. 原子移动操作
 
-### RPOPLPUSH - 从源列表弹出并推入目标列表
+### RPOPLPUSH - 从源列表弹出并推入目标列表 ⭐
+
+**使用频率：** ⭐ 中频
+
+**说明：** RPOPLPUSH 是一个原子操作，用于从源列表弹出元素并推入目标列表，在可靠消息队列、任务处理等场景中使用。
 
 **Redis命令：** `RPOPLPUSH source destination`
 
@@ -801,7 +866,11 @@ boundUtil.rightPopAndLeftPush(sourceKey, destKey, Class<T> clazz);
 
 
 
-### BRPOPLPUSH - 阻塞式弹出并推入
+### BRPOPLPUSH - 阻塞式弹出并推入 ⭐
+
+**使用频率：** ⭐ 中频
+
+**说明：** BRPOPLPUSH 是阻塞式的 RPOPLPUSH，在需要阻塞等待并原子性移动元素的场景中使用。
 
 **Redis命令：** `BRPOPLPUSH source destination timeout`
 

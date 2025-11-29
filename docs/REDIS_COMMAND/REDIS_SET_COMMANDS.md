@@ -1,14 +1,25 @@
-# Redis Set 命令列表
+# Set 命令列表
 
 本文档基于 `BoundUtil` 中的 Set 相关方法，总结 Redis Set 类型的所有命令、使用场景和示例代码。
 
-Redis Set 是一个无序、不重复的字符串集合，非常适合用于社交媒体场景中的关注关系、点赞记录、收藏列表等功能。
+Redis Set 是一个无序、不重复的字符串集合，非常适合用于社交媒体场景中的关注关系、点赞记录、收藏列表等功能。Set 类型提供了丰富的集合运算功能，如交集、并集、差集等，非常适合推荐系统、标签系统等场景。
+
+## 使用频率说明
+
+- **⭐⭐⭐ 极高频率**：几乎每个使用 Set 的场景都会使用
+- **⭐⭐ 高频**：大多数场景会使用
+- **⭐ 中频**：特定场景使用
+- **无标记**：低频或特殊场景使用
 
 
 
 ## 1. 基础操作
 
-### SADD - 添加成员
+### SADD - 添加成员 ⭐⭐⭐
+
+**使用频率：** ⭐⭐⭐ 极高频率
+
+**说明：** SADD 是 Set 类型最基础的命令，用于向集合中添加成员。在关注关系、点赞记录、收藏列表等场景中使用频率极高。
 
 **Redis命令：** `SADD key member [member ...]`
 
@@ -71,7 +82,11 @@ boundUtil.sAdd(key, value1, value2, ...);
 
 
 
-### SREM - 删除成员
+### SREM - 删除成员 ⭐⭐⭐
+
+**使用频率：** ⭐⭐⭐ 极高频率
+
+**说明：** SREM 用于从集合中删除成员，与 SADD 配合使用，在取消关注、取消点赞、取消收藏等场景中使用频率极高。
 
 **Redis命令：** `SREM key member [member ...]`
 
@@ -130,7 +145,11 @@ boundUtil.sRem(key, value1, value2, ...);
 
 
 
-### SMEMBERS - 获取所有成员
+### SMEMBERS - 获取所有成员 ⭐⭐
+
+**使用频率：** ⭐⭐ 高频
+
+**说明：** SMEMBERS 用于获取集合中的所有成员，在获取关注列表、点赞用户列表等场景中使用频率较高。注意：对于大集合（> 1万成员）建议使用 SSCAN。
 
 **Redis命令：** `SMEMBERS key`
 
@@ -183,7 +202,11 @@ boundUtil.sMembers(key, Class<T> clazz);
 
 
 
-### SISMEMBER - 判断成员是否存在
+### SISMEMBER - 判断成员是否存在 ⭐⭐⭐
+
+**使用频率：** ⭐⭐⭐ 极高频率
+
+**说明：** SISMEMBER 用于判断成员是否存在于集合中，在检查是否已关注、是否已点赞、是否已收藏等场景中使用频率极高。
 
 **Redis命令：** `SISMEMBER key member`
 
@@ -247,7 +270,11 @@ boundUtil.sIsMember(key, value);
 
 
 
-### SCARD - 获取集合大小
+### SCARD - 获取集合大小 ⭐⭐
+
+**使用频率：** ⭐⭐ 高频
+
+**说明：** SCARD 用于获取集合中的成员数量，在统计关注数、粉丝数、点赞数等场景中使用频率较高。
 
 **Redis命令：** `SCARD key`
 
@@ -298,7 +325,11 @@ boundUtil.sCard(key);
 
 
 
-### SPOP - 随机弹出成员
+### SPOP - 随机弹出成员 ⭐
+
+**使用频率：** ⭐ 中频
+
+**说明：** SPOP 用于随机弹出集合中的成员，在随机推荐、抽奖系统等场景中使用。
 
 **Redis命令：** `SPOP key [count]`
 
@@ -344,7 +375,11 @@ boundUtil.sPop(key, Class<T> clazz);  // 弹出1个成员
 
 ## 2. 集合运算
 
-### SDIFF - 差集
+### SDIFF - 差集 ⭐
+
+**使用频率：** ⭐ 中频
+
+**说明：** SDIFF 用于计算集合的差集，在查找互不关注的用户、推荐系统等场景中使用。
 
 **Redis命令：** `SDIFF key [key ...]`（Redis 原生命令，BoundUtil 中可能需要通过原生 RedisTemplate 调用）
 
@@ -375,7 +410,11 @@ boundUtil.sPop(key, Class<T> clazz);  // 弹出1个成员
 
 
 
-### SINTER - 交集
+### SINTER - 交集 ⭐⭐
+
+**使用频率：** ⭐⭐ 高频
+
+**说明：** SINTER 用于计算多个集合的交集，在查找共同关注、共同点赞、标签匹配等场景中使用频率较高。
 
 **Redis命令：** `SINTER key [key ...]`（Redis 原生命令，BoundUtil 中可能需要通过原生 RedisTemplate 调用）
 
@@ -428,7 +467,11 @@ boundUtil.sPop(key, Class<T> clazz);  // 弹出1个成员
 
 
 
-### SUNION - 并集
+### SUNION - 并集 ⭐
+
+**使用频率：** ⭐ 中频
+
+**说明：** SUNION 用于计算集合的并集，在合并关注列表、合并标签等场景中使用。
 
 **Redis命令：** `SUNION key [key ...]`（Redis 原生命令，BoundUtil 中可能需要通过原生 RedisTemplate 调用）
 
@@ -519,7 +562,11 @@ Long count = redisTemplate.opsForSet().unionAndStore(
 
 ## 3. 随机操作
 
-### SRANDMEMBER - 随机获取成员
+### SRANDMEMBER - 随机获取成员 ⭐
+
+**使用频率：** ⭐ 中频
+
+**说明：** SRANDMEMBER 用于随机获取集合中的成员（不移除），在随机推荐、随机展示等场景中使用。
 
 **Redis命令：** `SRANDMEMBER key [count]`（BoundUtil 中可能需要通过原生 RedisTemplate 调用）
 
@@ -559,6 +606,10 @@ Long count = redisTemplate.opsForSet().unionAndStore(
 
 ### SMOVE - 移动成员
 
+**使用频率：** 低频
+
+**说明：** SMOVE 用于将成员从源集合移动到目标集合，在迁移关注关系、状态流转等场景中使用。
+
 **Redis命令：** `SMOVE source destination member`（BoundUtil 中可能需要通过原生 RedisTemplate 调用）
 
 **用途：** 将成员从源集合移动到目标集合。
@@ -583,7 +634,11 @@ Long count = redisTemplate.opsForSet().unionAndStore(
 
 ## 5. 扫描操作
 
-### SSCAN - 增量遍历
+### SSCAN - 增量遍历 ⭐
+
+**使用频率：** ⭐ 中频
+
+**说明：** SSCAN 用于增量遍历大集合，避免 SMEMBERS 阻塞 Redis。在大集合（> 1万成员）场景中应该使用 SSCAN 替代 SMEMBERS。
 
 **Redis命令：** `SSCAN key cursor [MATCH pattern] [COUNT count]`（BoundUtil 中可能需要通过原生 RedisTemplate 调用）
 

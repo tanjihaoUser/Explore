@@ -1,13 +1,26 @@
-# Redis Hash 命令列表
+# Hash 命令列表
 
 本文档基于 `BoundUtil` 中的 Hash 相关方法，总结 Redis Hash 类型的常用命令、使用场景和示例代码，重点适用于：用户资料、会话、购物车等「可部分更新的对象」。
+
+Redis Hash 是一个键值对集合，适合存储对象。与 String 类型存储整个 JSON 对象不同，Hash 可以只更新对象的某个字段，非常适合用户资料、会话信息等需要部分更新的场景。
+
+## 使用频率说明
+
+- **⭐⭐⭐ 极高频率**：几乎每个使用 Hash 的场景都会使用
+- **⭐⭐ 高频**：大多数场景会使用
+- **⭐ 中频**：特定场景使用
+- **无标记**：低频或特殊场景使用
 
 
 
 
 ## 1. 基础写入
 
-### HSET / HMSET - 写入字段
+### HSET / HMSET - 写入字段 ⭐⭐⭐
+
+**使用频率：** ⭐⭐⭐ 极高频率
+
+**说明：** HSET 和 HMSET 是 Hash 类型最基础的写入命令，几乎每个使用 Hash 的场景都会用到。HSET 用于写入单个字段，HMSET 用于批量写入多个字段（Redis 新版本中 HSET 已支持多字段，HMSET 标记为过时）。
 
 **Redis命令：**
 - `HSET key field value [field value ...]`
@@ -70,7 +83,11 @@ boundUtil.hmset("user:" + user.getId(), map);
 
 ## 2. 读取字段
 
-### HGET / HMGET / HGETALL - 读取字段
+### HGET / HMGET / HGETALL - 读取字段 ⭐⭐⭐
+
+**使用频率：** ⭐⭐⭐ 极高频率
+
+**说明：** HGET、HMGET 和 HGETALL 是 Hash 类型最常用的读取命令。HGET 用于读取单个字段，HMGET 用于批量读取多个字段，HGETALL 用于读取整个 Hash 对象。
 
 **Redis命令：**
 - `HGET key field`
@@ -123,7 +140,11 @@ UserProfile profile = boundUtil.hGetAll("user:1", UserProfile.class);
 
 ## 3. 计数和数值操作
 
-### HINCRBY / HINCRBYFLOAT - 字段自增
+### HINCRBY / HINCRBYFLOAT - 字段自增 ⭐⭐
+
+**使用频率：** ⭐⭐ 高频
+
+**说明：** HINCRBY 和 HINCRBYFLOAT 用于对 Hash 中的数值字段执行自增操作，在统计信息、计数等场景中使用频率很高。这些命令是原子操作，可以在高并发场景下安全使用。
 
 **Redis命令：**
 - `HINCRBY key field increment`
@@ -198,7 +219,11 @@ Double balance = boundUtil.hGetFloatAsInteger("user:wallet:" + userId, "balance"
 
 ## 4. 删除 / 判断存在 / 长度
 
-### HDEL - 删除字段
+### HDEL - 删除字段 ⭐⭐
+
+**使用频率：** ⭐⭐ 高频
+
+**说明：** HDEL 用于删除 Hash 中的一个或多个字段，在需要清理过期字段、删除特定属性的场景中使用频率较高。
 
 **Redis命令：** `HDEL key field [field ...]`
 
@@ -218,7 +243,11 @@ boundUtil.hDel("session:" + sessionId, "tempCode");
 
 
 
-### HEXISTS - 字段是否存在
+### HEXISTS - 字段是否存在 ⭐⭐
+
+**使用频率：** ⭐⭐ 高频
+
+**说明：** HEXISTS 用于判断 Hash 中某个字段是否存在，在条件判断、字段检查等场景中使用频率较高。
 
 **Redis命令：** `HEXISTS key field`
 
@@ -237,7 +266,11 @@ Boolean exists = boundUtil.hExists("user:1", "email");
 
 
 
-### HLEN - 字段数量
+### HLEN - 字段数量 ⭐
+
+**使用频率：** ⭐ 中频
+
+**说明：** HLEN 用于获取 Hash 中字段的数量，在统计、检查等场景中使用。
 
 **Redis命令：** `HLEN key`
 
@@ -258,7 +291,11 @@ Long fieldCount = boundUtil.hLen("user:1");
 
 ## 5. 其他 Hash 操作
 
-### HKEYS / HVALS / HGETALL（Map）- 字段名与字段值
+### HKEYS / HVALS / HGETALL（Map）- 字段名与字段值 ⭐
+
+**使用频率：** ⭐ 中频
+
+**说明：** HKEYS、HVALS 和 HENTRIES 用于获取 Hash 的所有字段名、所有字段值或所有字段映射，在需要遍历 Hash 的场景中使用。
 
 **Redis命令：**
 - `HKEYS key`

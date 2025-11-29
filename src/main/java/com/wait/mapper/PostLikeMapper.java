@@ -31,4 +31,9 @@ public interface PostLikeMapper {
     List<PostLike> batchExists(@Param("likes") List<PostLike> likes);
 
     int countByPostId(Long postId);
+
+    /**
+     * 查询所有点赞关系（用于数据加载）
+     */
+    List<PostLike> selectAll();
 }

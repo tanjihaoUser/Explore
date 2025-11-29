@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
+import com.wait.service.RateLimitService;
 import com.wait.util.BoundUtil;
 import com.wait.util.limit.RateLimiter;
 
@@ -14,17 +15,19 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class RateLimitServiceImpl {
+public class RateLimitServiceImpl implements RateLimitService {
 
     @Qualifier("slideWindow")
     private final RateLimiter rateLimiter;
 
     private final BoundUtil boundUtil;
 
+    @Override
     public <T> T getByKey(String key, Class<T> clazz) {
         return boundUtil.get(key, clazz);
     }
 
+    @Override
     public int getWithLimit(String key, int limit, int interval, TimeUnit unit) {
         boolean allowed = rateLimiter.allowRequest(key, limit, interval, unit);
         if (allowed) {

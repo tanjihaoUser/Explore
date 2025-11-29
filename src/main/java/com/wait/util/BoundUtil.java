@@ -7,6 +7,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -741,7 +743,8 @@ public class BoundUtil {
         if (members == null)
             return Collections.emptySet();
 
-        Set<T> result = Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+        // Redis Set 本身无序，使用 HashSet 即可（方法内部单线程操作，不需要线程安全）
+        Set<T> result = new HashSet<>();
         for (Object member : members) {
             result.add(safeCast(member, clazz));
         }
@@ -780,7 +783,8 @@ public class BoundUtil {
         if (values == null)
             return Collections.emptySet();
 
-        Set<T> result = Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+        // 使用 LinkedHashSet 保持 Redis 返回的顺序
+        Set<T> result = new LinkedHashSet<>();
         for (Object value : values) {
             result.add(safeCast(value, clazz));
         }
@@ -792,7 +796,8 @@ public class BoundUtil {
         if (values == null)
             return Collections.emptySet();
 
-        Set<T> result = Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+        // 使用 LinkedHashSet 保持 Redis 返回的顺序
+        Set<T> result = new LinkedHashSet<>();
         for (Object value : values) {
             result.add(safeCast(value, clazz));
         }
@@ -810,6 +815,71 @@ public class BoundUtil {
 
     public Long zCard(String key) {
         return boundZSet(key).size();
+    }
+
+    /**
+     * 获取Sorted Set中成员的排名（按分数从高到低排序，ZREVRANK）
+     * 
+     * @param key   Sorted Set的key
+     * @param value 成员值
+     * @return 排名（0-based），如果成员不存在返回null
+     */
+    public <T> Long zRevRank(String key, T value) {
+        return boundZSet(key).reverseRank(value);
+    }
+
+    /**
+     * 按分数范围查询Sorted Set中的成员（ZRANGEBYSCORE）
+     * 
+     * @param key      Sorted Set的key
+     * @param minScore 最小分数（包含）
+     * @param maxScore 最大分数（包含）
+     * @param clazz    返回类型
+     * @return 指定分数范围内的成员集合（按分数从低到高排序）
+     */
+    public <T> Set<T> zRangeByScore(String key, double minScore, double maxScore, Class<T> clazz) {
+        Set<Object> values = boundZSet(key).rangeByScore(minScore, maxScore);
+        if (values == null)
+            return Collections.emptySet();
+
+        // 使用 LinkedHashSet 保持 Redis 返回的顺序（按分数从低到高）
+        Set<T> result = new LinkedHashSet<>();
+        for (Object value : values) {
+            result.add(safeCast(value, clazz));
+        }
+        return result;
+    }
+
+    /**
+     * 合并多个Sorted Set并存储到目标key（ZUNIONSTORE）
+     * 将多个源Sorted Set进行并集运算，结果存储到目标key
+     * 
+     * @param destKey    目标key（存储合并结果）
+     * @param sourceKeys 源key列表（至少包含一个key）
+     * @param aggregate  聚合方式（MAX:取最大值，MIN:取最小值，SUM:求和）
+     * @return 合并后目标Sorted Set的元素数量
+     */
+    public Long zUnionAndStore(String destKey, List<String> sourceKeys,
+            org.springframework.data.redis.connection.RedisZSetCommands.Aggregate aggregate) {
+        if (sourceKeys == null || sourceKeys.isEmpty()) {
+            throw new IllegalArgumentException("sourceKeys cannot be empty");
+        }
+
+        if (sourceKeys.size() == 1) {
+            // 只有一个源key，直接复制（使用ZUNIONSTORE，但不传递aggregate参数，因为只有一个源）
+            // 注意：单个key时，ZUNIONSTORE等同于复制操作
+            return redisTemplate.opsForZSet().unionAndStore(
+                    sourceKeys.get(0),
+                    Collections.emptyList(),
+                    destKey);
+        }
+
+        // 多个源key，执行并集运算
+        return redisTemplate.opsForZSet().unionAndStore(
+                sourceKeys.get(0),
+                sourceKeys.subList(1, sourceKeys.size()),
+                destKey,
+                aggregate);
     }
 
     /* ========== Hash（BoundHashOperations） ========== */
@@ -896,7 +966,8 @@ public class BoundUtil {
         if (keys == null || keys.isEmpty()) {
             return Collections.emptySet();
         }
-        Set<String> result = Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+        // Redis Hash 字段本身无序，使用 HashSet 即可（方法内部单线程操作，不需要线程安全）
+        Set<String> result = new HashSet<>();
         for (Object k : keys) {
             result.add(String.valueOf(k));
         }

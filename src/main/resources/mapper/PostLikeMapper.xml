@@ -37,4 +37,8 @@
         </foreach>
     </insert>
 
+    <select id="selectAll" resultType="com.wait.entity.domain.PostLike">
+        SELECT post_id AS postId, user_id AS userId FROM post_like
+    </select>
+
 </mapper>

@@ -13,6 +13,8 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import com.wait.config.script.RelationScripts;
+import com.wait.service.HotRankingService;
+import com.wait.service.RankingService;
 import com.wait.service.RelationPersistenceService;
 import com.wait.service.RelationService;
 import com.wait.util.BoundUtil;
@@ -33,6 +35,8 @@ public class RelationServiceImpl implements RelationService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final RelationScripts relationScripts;
     private final RelationPersistenceService persistenceService;
+    private final RankingService rankingService;
+    private final HotRankingService hotRankingService;
 
     // Redis Key 前缀
     private static final String USER_FOLLOW_PREFIX = "user:follow:";
@@ -214,6 +218,16 @@ public class RelationServiceImpl implements RelationService {
                         return null;
                     });
 
+            // 新增：更新排行榜和热度分数
+            try {
+                rankingService.onLike(postId);
+                hotRankingService.onLike(postId);
+                log.debug("Updated ranking and hot score for post {} due to like", postId);
+            } catch (Exception e) {
+                log.error("Failed to update ranking/hot score for post {}", postId, e);
+                // 不影响主流程，继续执行
+            }
+
             return true;
         }
         log.debug("user {} already likes post {}", userId, postId);
@@ -244,6 +258,16 @@ public class RelationServiceImpl implements RelationService {
                                 ex);
                         return null;
                     });
+
+            // 新增：更新排行榜和热度分数
+            try {
+                rankingService.onUnlike(postId);
+                hotRankingService.onUnlike(postId);
+                log.debug("Updated ranking and hot score for post {} due to unlike", postId);
+            } catch (Exception e) {
+                log.error("Failed to update ranking/hot score for post {}", postId, e);
+                // 不影响主流程，继续执行
+            }
 
             return true;
         }
@@ -325,6 +349,16 @@ public class RelationServiceImpl implements RelationService {
                         return null;
                     });
 
+            // 新增：更新排行榜和热度分数
+            try {
+                rankingService.onFavorite(postId);
+                hotRankingService.onFavorite(postId);
+                log.debug("Updated ranking and hot score for post {} due to favorite", postId);
+            } catch (Exception e) {
+                log.error("Failed to update ranking/hot score for post {}", postId, e);
+                // 不影响主流程，继续执行
+            }
+
             return true;
         }
         log.debug("user {} already favorites post {}", userId, postId);
@@ -356,6 +390,16 @@ public class RelationServiceImpl implements RelationService {
                         return null;
                     });
 
+            // 新增：更新排行榜和热度分数
+            try {
+                rankingService.onUnfavorite(postId);
+                hotRankingService.onUnfavorite(postId);
+                log.debug("Updated ranking and hot score for post {} due to unfavorite", postId);
+            } catch (Exception e) {
+                log.error("Failed to update ranking/hot score for post {}", postId, e);
+                // 不影响主流程，继续执行
+            }
+
             return true;
         }
         log.debug("user {} already unfavorites post {}", userId, postId);
@@ -386,6 +430,19 @@ public class RelationServiceImpl implements RelationService {
         }
         // 优先从 Set 获取准确计数
         return boundUtil.sCard(POST_FAVORITED_BY_PREFIX + postId);
+    }
+
+    @Override
+    public Map<Long, Boolean> batchCheckFavorited(Long userId, List<Long> postIds) {
+        if (userId == null || postIds == null || postIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Map<Long, Boolean> result = new HashMap<>();
+        for (Long postId : postIds) {
+            result.put(postId, isFavorited(userId, postId));
+        }
+        return result;
     }
 
     // ==================== 黑名单相关 ====================

@@ -120,6 +120,11 @@ public interface RelationService {
      */
     Long getFavoriteCount(Long postId);
 
+    /**
+     * 批量检查收藏状态
+     */
+    Map<Long, Boolean> batchCheckFavorited(Long userId, List<Long> postIds);
+
     // ==================== 黑名单相关 ====================
 
     /**

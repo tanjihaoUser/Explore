@@ -76,6 +76,7 @@ public class RelationPersistenceServiceImpl implements RelationPersistenceServic
     private final FollowMapper followMapper;
     private final PostLikeMapper postLikeMapper;
     private final PostFavoriteMapper postFavoriteMapper;
+    private final com.wait.mapper.UserBlockMapper userBlockMapper;
     private final AsyncSQLWrapper asyncSQLWrapper;
 
     @Qualifier("refreshScheduler")
@@ -145,10 +146,10 @@ public class RelationPersistenceServiceImpl implements RelationPersistenceServic
             log.debug("Batch size threshold reached ({}), triggering immediate flush",
                     batchTask.getTotalOperationCount());
             flushBatchToDatabase();
-                } else {
+        } else {
             // 3. 未达到阈值，确保定时任务已启动（如果未启动）
             scheduleBatchFlushTask();
-                }
+        }
 
         // 4. 立即返回 CompletableFuture，不阻塞主流程
         return CompletableFuture.completedFuture(null);
@@ -166,10 +167,10 @@ public class RelationPersistenceServiceImpl implements RelationPersistenceServic
             log.debug("Batch size threshold reached ({}), triggering immediate flush",
                     batchTask.getTotalOperationCount());
             flushBatchToDatabase();
-                } else {
+        } else {
             // 3. 未达到阈值，确保定时任务已启动（如果未启动）
             scheduleBatchFlushTask();
-                }
+        }
 
         // 4. 立即返回 CompletableFuture，不阻塞主流程
         return CompletableFuture.completedFuture(null);
@@ -182,21 +183,28 @@ public class RelationPersistenceServiceImpl implements RelationPersistenceServic
     public void persistBlock(Long userId, Long blockedUserId, boolean isBlock) {
         // Write-Through 策略：同步执行，使用 AsyncSQLWrapper 统一管理重试
         asyncSQLWrapper.executeSync(() -> {
-            // 黑名单通常有单独的表，这里简化为使用现有的 FollowMapper
-            // 实际项目中应该创建 BlockMapper
-            // 为了示例，这里使用注释说明
-
             if (isBlock) {
-                // TODO: 实际项目中创建 BlockMapper
-                // Block block = Block.builder()
-                // .userId(userId)
-                // .blockedUserId(blockedUserId)
-                // .build();
-                // blockMapper.insert(block);
-                log.info("Persisted block: user {} blocks user {}", userId, blockedUserId);
+                // 检查数据库中是否已存在
+                boolean exists = userBlockMapper.exists(userId, blockedUserId);
+                if (!exists) {
+                    com.wait.entity.domain.UserBlock userBlock = com.wait.entity.domain.UserBlock.builder()
+                            .userId(userId)
+                            .blockedUserId(blockedUserId)
+                            .createdAt(System.currentTimeMillis())
+                            .build();
+                    userBlockMapper.insert(userBlock);
+                    log.info("Persisted block: user {} blocks user {}", userId, blockedUserId);
+                } else {
+                    log.debug("Block already exists in DB: user {} blocks user {}", userId, blockedUserId);
+                }
             } else {
-                // TODO: blockMapper.delete(userId, blockedUserId);
-                log.info("Persisted unblock: user {} unblocks user {}", userId, blockedUserId);
+                // 取消拉黑
+                int deleted = userBlockMapper.delete(userId, blockedUserId);
+                if (deleted > 0) {
+                    log.info("Persisted unblock: user {} unblocks user {}", userId, blockedUserId);
+                } else {
+                    log.debug("Block not found in DB: user {} unblocks user {}", userId, blockedUserId);
+                }
             }
             return null;
         });

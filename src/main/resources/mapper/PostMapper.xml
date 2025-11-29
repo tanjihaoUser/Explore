@@ -4,57 +4,89 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.wait.mapper.PostMapper">
 
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="com.wait.entity.domain.Post">
+        <id column="id" property="id" />
+        <result column="user_id" property="userId" />
+        <result column="content" property="content" />
+        <result column="like_count" property="likeCount" />
+        <result column="comment_count" property="commentCount" />
+        <result column="is_deleted" property="isDeleted" />
+        <result column="created_at" property="createdAt" />
+        <result column="updated_at" property="updatedAt" />
+    </resultMap>
+
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO post (user_id, content, like_count, comment_count)
-        VALUES (#{userId}, #{content}, #{likeCount}, #{commentCount})
+        INSERT INTO post (user_id, content, like_count, comment_count, created_at, updated_at)
+        VALUES (#{userId}, #{content}, #{likeCount}, #{commentCount}, NOW(), NOW())
     </insert>
 
-    <select id="selectById" resultType="com.wait.entity.domain.Post">
-        SELECT * FROM post WHERE id = #{id} AND is_deleted = 0
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT id, user_id, content, like_count, comment_count, is_deleted, created_at, updated_at
+        FROM post 
+        WHERE id = #{id} AND is_deleted = 0
     </select>
 
-    <select id="selectByUserId" resultType="com.wait.entity.domain.Post">
-        SELECT p.*, u.username
+    <select id="selectByUserId" resultMap="BaseResultMap">
+        SELECT p.id, p.user_id, p.content, p.like_count, p.comment_count, p.is_deleted, p.created_at, p.updated_at
         FROM post p
-        LEFT JOIN user_base u ON p.user_id = u.id
         WHERE p.user_id = #{userId} AND p.is_deleted = 0
-        ORDER BY p.id DESC
+        ORDER BY p.updated_at DESC, p.id DESC
     </select>
 
     <!-- 分页查询用户帖子（数据库层面分页，性能更好） -->
-    <select id="selectByUserIdWithPagination" resultType="com.wait.entity.domain.Post">
-        SELECT p.*, u.username
+    <select id="selectByUserIdWithPagination" resultMap="BaseResultMap">
+        SELECT p.id, p.user_id, p.content, p.like_count, p.comment_count, p.is_deleted, p.created_at, p.updated_at
         FROM post p
-        LEFT JOIN user_base u ON p.user_id = u.id
         WHERE p.user_id = #{userId} AND p.is_deleted = 0
-        ORDER BY p.id DESC
+        ORDER BY p.updated_at DESC, p.id DESC
         LIMIT #{limit} OFFSET #{offset}
     </select>
 
-    <select id="selectByIds" resultType="com.wait.entity.domain.Post">
-        SELECT p.*, u.username
+    <select id="selectByIds" resultMap="BaseResultMap">
+        SELECT p.id, p.user_id, p.content, p.like_count, p.comment_count, p.is_deleted, p.created_at, p.updated_at
         FROM post p
-        LEFT JOIN user_base u ON p.user_id = u.id
         WHERE p.id IN
         <foreach collection="ids" item="id" open="(" separator="," close=")">
             #{id}
         </foreach>
         AND p.is_deleted = 0
-        ORDER BY p.id DESC
+        ORDER BY p.updated_at DESC, p.id DESC
     </select>
 
     <update id="update">
         UPDATE post
-        SET content = #{content}, like_count = #{likeCount}, comment_count = #{commentCount}
+        SET content = #{content}, like_count = #{likeCount}, comment_count = #{commentCount}, updated_at = NOW()
         WHERE id = #{id}
     </update>
 
     <update id="delete">
-        UPDATE post SET is_deleted = 1 WHERE id = #{id}
+        UPDATE post SET is_deleted = 1, updated_at = NOW() WHERE id = #{id}
     </update>
 
     <select id="countByUserId" resultType="int">
         SELECT COUNT(*) FROM post WHERE user_id = #{userId} AND is_deleted = 0
+    </select>
+
+    <!-- 批量查询帖子的用户ID映射（仅返回id和userId字段，用于优化性能） -->
+    <select id="selectUserIdsByIds" resultType="com.wait.entity.domain.Post">
+        SELECT id, user_id AS userId
+        FROM post
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        AND is_deleted = 0
+    </select>
+
+    <!-- 统计用户的所有帖子数据（帖子数、点赞总数、评论总数） -->
+    <select id="selectUserStatistics" resultType="java.util.HashMap">
+        SELECT 
+            COUNT(*) AS postCount,
+            COALESCE(SUM(like_count), 0) AS totalLikeCount,
+            COALESCE(SUM(comment_count), 0) AS totalCommentCount
+        FROM post
+        WHERE user_id = #{userId} AND is_deleted = 0
     </select>
 
 </mapper>

@@ -1,4 +1,7 @@
 # application.yml
+server:
+  port: 8080
+
 spring:
   redis:
     host: 127.0.0.1
@@ -50,9 +53,21 @@ spring:
       stat-view-servlet:
         enabled: true
         url-pattern: /druid/*
-        # 注意：生产环境应使用强密码，建议通过环境变量配置
-        login-username: admin
-        login-password: admin
+        reset-enable: true
+        login-username: druid
+        login-password: druid
+        allow: 127.0.0.1 # 允许访问的IP
+        deny: # 拒绝访问的IP
+
+# Actuator 配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics # 暴露健康检查、信息、指标等端点
+  endpoint:
+    health:
+      show-details: always # 总是显示健康详情
 
 # MyBatis配置
 mybatis:
@@ -73,6 +88,8 @@ mybatis:
 # 日志配置
 logging:
   level:
+    org.springframework.security: DEBUG # 开启 Spring Security 调试日志
+    org.springframework.web.cors: DEBUG   # 开启 CORS 调试日志
+    com.wait: DEBUG # 开启自定义包的调试日志
     root: warn              # 忽略框架中打印无关日志
-    com.wait.*.*: debug     # 本项目级别所有日志开关
     com.wait.mapper: info   # 打印SQL日志
