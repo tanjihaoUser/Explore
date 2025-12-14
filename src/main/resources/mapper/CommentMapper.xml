@@ -96,5 +96,13 @@
         GROUP BY post_id
     </select>
 
+    <!-- 查询所有有评论的帖子ID和评论数（用于定时同步） -->
+    <select id="selectAllPostCommentCounts" resultMap="BaseResultMap">
+        SELECT post_id AS postId, COUNT(*) AS likeCount
+        FROM post_comment
+        WHERE is_deleted = 0
+        GROUP BY post_id
+    </select>
+
 </mapper>
 

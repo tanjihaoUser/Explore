@@ -58,6 +58,10 @@
                     <el-icon><ChatDotRound /></el-icon>
                   </el-button>
                 </el-badge>
+                <el-button disabled circle>
+                  <el-icon><View /></el-icon>
+                  <span style="margin-left: 5px">{{ post.viewCount || 0 }}</span>
+                </el-button>
               </div>
               <div class="post-actions" v-if="isOwnPost(post)">
                 <el-button type="primary" size="small" @click="handleEdit(post.id)">
@@ -180,12 +184,13 @@
 import { ref, onMounted, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Trophy, Medal, Star, UserFilled, ArrowUp, ChatDotRound, Edit, Delete } from "@element-plus/icons-vue";
+import { Trophy, Medal, Star, UserFilled, ArrowUp, ChatDotRound, Edit, Delete, View } from "@element-plus/icons-vue";
 import { useUserStore } from "@/stores/user";
 import { getPostsByUserId, deletePost } from "@/api/post";
 import { likePost, unlikePost, favoritePost, unfavoritePost } from "@/api/relation";
 import { getUserRanking } from "@/api/user";
 import { follow, unfollow } from "@/api/relation";
+import { getPostViewStatistics } from "@/api/statistics";
 
 const router = useRouter();
 const route = useRoute();
@@ -257,6 +262,9 @@ async function loadPosts() {
       // 直接使用返回的数据，无需额外请求
       posts.value = postList;
       total.value = response.data.data?.count || response.data.count || postList.length;
+      
+      // 为每个帖子加载浏览量（异步，不阻塞）
+      loadViewCountsForPosts(postList);
     } else {
       ElMessage.error(response.data.message || "加载帖子失败");
     }
@@ -438,6 +446,22 @@ async function toggleFollow(user) {
 
 function goToUserProfile(userId) {
   router.push(`/user/${userId}`);
+}
+
+async function loadViewCountsForPosts(postList) {
+  // 异步加载每个帖子的浏览量，不阻塞主流程
+  postList.forEach(async (post) => {
+    try {
+      const response = await getPostViewStatistics(post.id, 24);
+      if (response.data.code === 200) {
+        const data = response.data.data;
+        post.viewCount = data.total || 0;
+      }
+    } catch (error) {
+      console.error(`加载帖子浏览量失败: postId=${post.id}`, error);
+      post.viewCount = 0;
+    }
+  });
 }
 
 function formatScore(score) {

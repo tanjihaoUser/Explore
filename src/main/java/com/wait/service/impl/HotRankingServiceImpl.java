@@ -2,14 +2,12 @@ package com.wait.service.impl;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import com.wait.entity.domain.Post;
-import com.wait.mapper.PostMapper;
 import com.wait.service.HotRankingService;
+import com.wait.service.RankingService;
 import com.wait.util.BoundUtil;
 
 import lombok.RequiredArgsConstructor;
@@ -28,22 +26,22 @@ import lombok.extern.slf4j.Slf4j;
 public class HotRankingServiceImpl implements HotRankingService {
 
     private final BoundUtil boundUtil;
-    private final PostMapper postMapper;
+    private final RankingService rankingService;
 
     // 热度权重配置
-    private static final double LIKE_WEIGHT = 0.4;        // 点赞权重
-    private static final double FAVORITE_WEIGHT = 0.3;    // 收藏权重
-    private static final double COMMENT_WEIGHT = 0.2;     // 评论权重
-    private static final double SHARE_WEIGHT = 0.1;       // 分享权重（暂未实现）
+    private static final double LIKE_WEIGHT = 0.4; // 点赞权重
+    private static final double FAVORITE_WEIGHT = 0.3; // 收藏权重
+    private static final double COMMENT_WEIGHT = 0.2; // 评论权重
+    private static final double SHARE_WEIGHT = 0.1; // 分享权重（暂未实现）
 
     // Redis Key前缀
     private static final String HOT_RANKING_PREFIX = "post:ranking:hot:";
-    
+
     // 时间加成配置（可选，用于提升新帖子的热度）
     @SuppressWarnings("unused")
-    private static final int TIME_BOOST_HOURS = 24;       // 24小时内发布的内容有加成
+    private static final int TIME_BOOST_HOURS = 24; // 24小时内发布的内容有加成
     @SuppressWarnings("unused")
-    private static final double TIME_BOOST_RATIO = 1.2;   // 加成比例
+    private static final double TIME_BOOST_RATIO = 1.2; // 加成比例
 
     @Override
     public void updateHotScore(Long postId) {
@@ -53,26 +51,33 @@ public class HotRankingServiceImpl implements HotRankingService {
         }
 
         try {
-            // 从数据库获取帖子统计信息
-            Post post = postMapper.selectById(postId);
-            if (post == null) {
-                log.warn("Post {} not found, cannot update hot score", postId);
-                return;
+            // 从Redis获取实时统计数据（避免数据库查询，减少数据库压力）
+            // 所有统计数据都从Redis获取，保证实时性和一致性
+
+            // 从RankingService的Sorted Set获取点赞数
+            Long likeCount = rankingService.getLikeCount(postId);
+            if (likeCount == null) {
+                likeCount = 0L;
             }
 
-            // 获取各项统计数据
-            int likeCount = post.getLikeCount() != null ? post.getLikeCount() : 0;
-            int commentCount = post.getCommentCount() != null ? post.getCommentCount() : 0;
-            
-            // 从RankingService的Sorted Set获取收藏数（如果Redis中有）
-            Double favoriteScore = boundUtil.zScore("post:ranking:favorites", postId);
-            int favoriteCount = favoriteScore != null ? favoriteScore.intValue() : 0;
-            
-            // 如果Redis中没有收藏数，尝试从数据库获取（如果Post实体有收藏数字段）
-            // 注意：当前Post实体没有收藏数字段，所以暂时只从Redis获取
+            // 从RankingService的Sorted Set获取收藏数
+            Long favoriteCount = rankingService.getFavoriteCount(postId);
+            if (favoriteCount == null) {
+                favoriteCount = 0L;
+            }
+
+            // 从RankingService的Sorted Set获取评论数
+            Long commentCount = rankingService.getCommentCount(postId);
+            if (commentCount == null) {
+                commentCount = 0L;
+            }
 
             // 计算综合热度分数
-            double hotScore = calculateHotScore(likeCount, favoriteCount, commentCount, 0);
+            double hotScore = calculateHotScore(
+                    likeCount.intValue(),
+                    favoriteCount.intValue(),
+                    commentCount.intValue(),
+                    0);
 
             // 更新所有时间段的排行榜
             updateRankingForAllPeriods(postId, hotScore);
@@ -132,8 +137,8 @@ public class HotRankingServiceImpl implements HotRankingService {
         long end = start + pageSize - 1;
 
         // 使用 zReverseRange 获取分数最高的帖子（热度从高到低）
-        Set<Long> postIds = boundUtil.zReverseRange(key, start, end, Long.class);
-        return new ArrayList<>(postIds != null ? postIds : new ArrayList<>());
+        List<Long> postIds = boundUtil.zReverseRange(key, start, end, Long.class);
+        return postIds != null ? postIds : new ArrayList<>();
     }
 
     @Override
@@ -142,7 +147,7 @@ public class HotRankingServiceImpl implements HotRankingService {
             return null;
         }
         String key = HOT_RANKING_PREFIX + period.toLowerCase();
-        
+
         // 使用 zRevRank 获取排名（0-based），转换为1-based
         Long rank = boundUtil.zRevRank(key, postId);
         return rank != null ? rank + 1 : null;
@@ -172,7 +177,7 @@ public class HotRankingServiceImpl implements HotRankingService {
      * 更新所有时间段的排行榜
      */
     private void updateRankingForAllPeriods(Long postId, double hotScore) {
-        String[] periods = {"daily", "weekly", "monthly", "alltime"};
+        String[] periods = { "daily", "weekly", "monthly", "alltime" };
         for (String period : periods) {
             String key = HOT_RANKING_PREFIX + period;
             // 使用 ZADD 更新分数（如果不存在则添加，存在则更新）

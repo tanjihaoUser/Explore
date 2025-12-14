@@ -1,6 +1,7 @@
 package com.wait;
 
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -68,7 +69,7 @@ public class DataLoadTest {
         AtomicInteger timelineCount = new AtomicInteger(0);
 
         // 用于存储所有帖子，供后续步骤使用
-        List<Post> allPosts = new java.util.ArrayList<>();
+        List<Post> allPosts = new ArrayList<>();
 
         try {
             // 1. 加载用户数据（通过查询触发缓存）

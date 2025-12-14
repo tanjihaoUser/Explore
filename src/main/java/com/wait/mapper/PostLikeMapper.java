@@ -19,6 +19,14 @@ public interface PostLikeMapper {
 
     int delete(@Param("postId") Long postId, @Param("userId") Long userId);
 
+    /**
+     * 批量删除（用于数据修复）
+     * 
+     * @param deletes 待删除的点赞关系列表
+     * @return 删除的记录数
+     */
+    int batchDelete(@Param("deletes") List<PostLike> deletes);
+
     boolean exists(@Param("postId") Long postId, @Param("userId") Long userId);
 
     /**
@@ -36,4 +44,37 @@ public interface PostLikeMapper {
      * 查询所有点赞关系（用于数据加载）
      */
     List<PostLike> selectAll();
+
+    /**
+     * 查询所有有点赞的帖子ID和点赞数（用于定时同步）
+     * 
+     * @return 帖子ID和点赞数的映射（PostLike对象中postId存储帖子ID，id字段存储点赞数）
+     */
+    List<PostLike> selectAllPostLikeCounts();
+
+    /**
+     * 根据帖子ID查询所有点赞的用户ID列表
+     * 用于数据校验
+     * 
+     * @param postId 帖子ID
+     * @return 用户ID列表
+     */
+    List<Long> selectUserIdsByPostId(@Param("postId") Long postId);
+
+    /**
+     * 查询所有有点赞的帖子ID列表（去重）
+     * 用于定时校验
+     * 
+     * @return 帖子ID列表
+     */
+    List<Long> selectDistinctPostIds();
+
+    /**
+     * 分页查询有点赞的帖子ID列表（用于分批校验）
+     * 
+     * @param offset 偏移量
+     * @param limit  限制数量
+     * @return 帖子ID列表
+     */
+    List<Long> selectDistinctPostIdsWithPaging(@Param("offset") int offset, @Param("limit") int limit);
 }

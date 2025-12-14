@@ -9,8 +9,24 @@
         VALUES (#{followerId}, #{followedId})
     </insert>
 
+    <!-- 批量插入 -->
+    <insert id="batchInsert">
+        INSERT INTO user_follow (follower_id, followed_id) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.followerId}, #{item.followedId})
+        </foreach>
+    </insert>
+
     <delete id="delete">
         DELETE FROM user_follow WHERE follower_id = #{followerId} AND followed_id = #{followedId}
+    </delete>
+
+    <!-- 批量删除 -->
+    <delete id="batchDelete">
+        DELETE FROM user_follow WHERE (follower_id, followed_id) IN
+        <foreach collection="deletes" item="item" open="(" separator="," close=")">
+            (#{item.followerId}, #{item.followedId})
+        </foreach>
     </delete>
 
     <select id="selectFollowedIds" resultType="long">
@@ -28,6 +44,27 @@
 
     <select id="countFollowing" resultType="int">
         SELECT COUNT(*) FROM user_follow WHERE follower_id = #{followerId}
+    </select>
+
+    <!-- 查询所有有关注关系的用户ID列表（去重，包括关注者和被关注者） -->
+    <select id="selectDistinctUserIds" resultType="java.lang.Long">
+        SELECT DISTINCT user_id FROM (
+            SELECT follower_id AS user_id FROM user_follow
+            UNION
+            SELECT followed_id AS user_id FROM user_follow
+        ) AS all_users
+        ORDER BY user_id
+    </select>
+
+    <!-- 分页查询有关注关系的用户ID列表 -->
+    <select id="selectDistinctUserIdsWithPaging" resultType="java.lang.Long">
+        SELECT DISTINCT user_id FROM (
+            SELECT follower_id AS user_id FROM user_follow
+            UNION
+            SELECT followed_id AS user_id FROM user_follow
+        ) AS all_users
+        ORDER BY user_id
+        LIMIT #{limit} OFFSET #{offset}
     </select>
 
 </mapper>

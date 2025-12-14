@@ -1,6 +1,7 @@
 package com.wait.mapper;
 
 import java.util.List;
+import java.util.Map;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -52,5 +53,5 @@ public interface PostMapper {
      * @param userId 用户ID
      * @return 统计数据Map，包含postCount, totalLikeCount, totalCommentCount
      */
-    java.util.Map<String, Object> selectUserStatistics(@Param("userId") Long userId);
+    Map<String, Object> selectUserStatistics(@Param("userId") Long userId);
 }

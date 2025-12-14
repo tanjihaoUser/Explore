@@ -3,6 +3,8 @@ package com.wait.controller;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -16,7 +18,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.wait.entity.domain.Post;
+import com.wait.entity.type.ResourceType;
+import com.wait.service.BrowseHistoryService;
 import com.wait.service.PostService;
+import com.wait.service.StatisticsService;
+import com.wait.service.UVStatisticsService;
 import com.wait.util.ResponseUtil;
 
 import lombok.RequiredArgsConstructor;
@@ -32,6 +38,9 @@ import lombok.extern.slf4j.Slf4j;
 public class PostController {
 
     private final PostService postService;
+    private final StatisticsService statisticsService;
+    private final BrowseHistoryService browseHistoryService;
+    private final UVStatisticsService uvStatisticsService;
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> createPost(@RequestBody Post post) {
@@ -43,12 +52,39 @@ public class PostController {
     }
 
     @GetMapping("/{postId}")
-    public ResponseEntity<Map<String, Object>> getPostById(@PathVariable Long postId) {
-        log.info("Getting post by id: {}", postId);
+    public ResponseEntity<Map<String, Object>> getPostById(
+            @PathVariable Long postId,
+            @RequestParam(required = false) Long userId) {
+        log.info("Getting post by id: {}, userId: {}", postId, userId);
         Post post = postService.getPostById(postId);
         if (post == null) {
             return ResponseUtil.notFound("帖子不存在或已被删除");
         }
+
+        // 记录帖子浏览量
+        try {
+            statisticsService.recordPostView(postId);
+        } catch (Exception e) {
+            log.error("Failed to record post view: postId={}", postId, e);
+        }
+
+        // 如果提供了用户ID，记录浏览历史
+        if (userId != null) {
+            try {
+                browseHistoryService.recordBrowse(userId, postId);
+            } catch (Exception e) {
+                log.error("Failed to record browse history: userId={}, postId={}", userId, postId, e);
+            }
+        }
+
+        // 记录 UV 统计（使用用户ID作为访客ID，如果没有用户ID则使用IP地址）
+        try {
+            String visitorId = userId != null ? String.valueOf(userId) : "anonymous";
+            uvStatisticsService.recordVisit(ResourceType.POST, postId, visitorId);
+        } catch (Exception e) {
+            log.error("Failed to record UV statistics: postId={}, visitorId={}", postId, userId, e);
+        }
+
         return ResponseUtil.success(post);
     }
 
@@ -66,13 +102,13 @@ public class PostController {
         if (currentUserId != null && !posts.isEmpty()) {
             List<Long> postIds = posts.stream()
                     .map(Post::getId)
-                    .filter(java.util.Objects::nonNull)
-                    .collect(java.util.stream.Collectors.toList());
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
             List<Post> postsWithRelation = postService.getPostsByIdsWithRelation(postIds, currentUserId);
 
             // 保持原有顺序，更新关系数据
-            java.util.Map<Long, Post> relationMap = postsWithRelation.stream()
-                    .collect(java.util.stream.Collectors.toMap(Post::getId, p -> p));
+            Map<Long, Post> relationMap = postsWithRelation.stream()
+                    .collect(Collectors.toMap(Post::getId, p -> p));
             for (Post post : posts) {
                 Post postWithRelation = relationMap.get(post.getId());
                 if (postWithRelation != null) {

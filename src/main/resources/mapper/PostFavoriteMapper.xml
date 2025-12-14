@@ -13,6 +13,14 @@
         DELETE FROM post_favorite WHERE user_id = #{userId} AND post_id = #{postId}
     </delete>
 
+    <!-- 批量删除 -->
+    <delete id="batchDelete">
+        DELETE FROM post_favorite WHERE (user_id, post_id) IN
+        <foreach collection="deletes" item="item" open="(" separator="," close=")">
+            (#{item.userId}, #{item.postId})
+        </foreach>
+    </delete>
+
     <select id="exists" resultType="boolean">
         SELECT COUNT(*) > 0 FROM post_favorite WHERE user_id = #{userId} AND post_id = #{postId}
     </select>
@@ -45,6 +53,23 @@
     <select id="selectAll" resultType="com.wait.entity.domain.PostFavorite">
         SELECT user_id AS userId, post_id AS postId, created_at AS createdAt 
         FROM post_favorite
+    </select>
+
+    <!-- 查询所有有收藏的帖子ID和收藏数（用于定时同步） -->
+    <select id="selectAllPostFavoriteCounts" resultType="com.wait.entity.domain.PostFavorite">
+        SELECT post_id AS postId, COUNT(*) AS id
+        FROM post_favorite
+        GROUP BY post_id
+    </select>
+
+    <!-- 查询所有有收藏的用户ID列表（去重） -->
+    <select id="selectDistinctUserIds" resultType="java.lang.Long">
+        SELECT DISTINCT user_id FROM post_favorite ORDER BY user_id
+    </select>
+
+    <!-- 分页查询有收藏的用户ID列表 -->
+    <select id="selectDistinctUserIdsWithPaging" resultType="java.lang.Long">
+        SELECT DISTINCT user_id FROM post_favorite ORDER BY user_id LIMIT #{limit} OFFSET #{offset}
     </select>
 
 </mapper>

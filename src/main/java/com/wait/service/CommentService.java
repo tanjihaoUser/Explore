@@ -1,6 +1,7 @@
 package com.wait.service;
 
 import java.util.List;
+import java.util.Map;
 
 import com.wait.entity.domain.Comment;
 
@@ -52,6 +53,6 @@ public interface CommentService {
     /**
      * 批量获取帖子的评论数
      */
-    java.util.Map<Long, Integer> batchGetCommentCounts(List<Long> postIds);
+    Map<Long, Integer> batchGetCommentCounts(List<Long> postIds);
 }
 

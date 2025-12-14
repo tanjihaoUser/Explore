@@ -88,8 +88,34 @@ mybatis:
 # 日志配置
 logging:
   level:
-    org.springframework.security: DEBUG # 开启 Spring Security 调试日志
-    org.springframework.web.cors: DEBUG   # 开启 CORS 调试日志
     com.wait: DEBUG # 开启自定义包的调试日志
     root: warn              # 忽略框架中打印无关日志
     com.wait.mapper: info   # 打印SQL日志
+
+# 定时校验数据配置
+relation:
+  validation:
+    interval: 1800000  # 时间间隔 30分钟
+    enabled: true # 是否开启定时校验
+    batch-size: 100 # 每次批量校验的数据大小
+    fix:
+      interval: 3600000  # 1小时
+      initialDelay: 300000  # 5分钟
+      enabled: false
+
+# 时间窗口统计配置
+time-window-statistics:
+  # 需要持久化到数据库的指标名称列表（基础指标名称，不包含动态后缀）
+  # 注意：如果指标名称包含动态后缀（如 post:view:123），只需要配置基础名称（post:view）
+  # 定时任务会同步所有以这些基础名称开头的指标数据
+  metrics:
+    - post:view          # 帖子浏览量
+    - homepage:view      # 主页访问量
+    - post:like          # 帖子点赞
+    - post:favorite      # 帖子收藏
+    - api:request        # API请求统计
+    - user:activity      # 用户活动统计
+    - error:count        # 错误统计
+    - page:view          # 页面浏览量
+    - search:query       # 搜索查询统计
+    - comment:count      # 评论统计

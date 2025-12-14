@@ -59,8 +59,7 @@ public class RankingController {
 
         Map<String, Object> data = new HashMap<>();
         data.put("userId", userId);
-        data.put("posts", posts); // ✅ 返回完整帖子列表，包含点赞收藏状态
-        data.put("postIds", postIds); // 保留 ID 列表，便于调试
+        data.put("posts", posts); // 返回完整帖子列表，包含点赞收藏状态
         data.put("page", page);
         data.put("pageSize", pageSize);
         data.put("count", posts.size()); // 使用实际获取到的帖子数量
@@ -87,8 +86,7 @@ public class RankingController {
         List<Post> posts = postService.getPostsByIdsWithRelation(postIds, currentUserId);
 
         Map<String, Object> data = new HashMap<>();
-        data.put("posts", posts); // ✅ 返回完整帖子列表，包含点赞收藏状态
-        data.put("postIds", postIds); // 保留 ID 列表，便于调试
+        data.put("posts", posts); // 返回完整帖子列表，包含点赞收藏状态
         data.put("page", page);
         data.put("pageSize", pageSize);
         data.put("count", posts.size()); // 使用实际获取到的帖子数量
@@ -119,8 +117,7 @@ public class RankingController {
         if (userId != null) {
             data.put("userId", userId);
         }
-        data.put("posts", posts); // ✅ 返回完整帖子列表，包含点赞收藏状态
-        data.put("postIds", postIds); // 保留 ID 列表，便于调试
+        data.put("posts", posts); // 返回完整帖子列表，包含点赞收藏状态
         data.put("startTime", startTime);
         data.put("endTime", endTime);
         data.put("count", posts.size()); // 使用实际获取到的帖子数量
@@ -151,8 +148,7 @@ public class RankingController {
 
         Map<String, Object> data = new HashMap<>();
         data.put("userId", userId);
-        data.put("posts", posts); // ✅ 返回完整帖子列表，包含点赞收藏状态
-        data.put("postIds", postIds); // 保留 ID 列表，便于调试
+        data.put("posts", posts); // 返回完整帖子列表，包含点赞收藏状态
         data.put("page", page);
         data.put("pageSize", pageSize);
         data.put("count", posts.size()); // 使用实际获取到的帖子数量
@@ -183,8 +179,7 @@ public class RankingController {
 
         Map<String, Object> data = new HashMap<>();
         data.put("period", period);
-        data.put("posts", posts); // ✅ 返回完整帖子列表，包含点赞收藏状态
-        data.put("postIds", postIds); // 保留 ID 列表，便于调试
+        data.put("posts", posts); // 返回完整帖子列表，包含点赞收藏状态
         data.put("page", page);
         data.put("pageSize", pageSize);
         data.put("count", posts.size()); // 使用实际获取到的帖子数量
@@ -233,8 +228,7 @@ public class RankingController {
         List<Post> posts = postService.getPostsByIdsWithRelation(postIds, currentUserId);
 
         Map<String, Object> data = new HashMap<>();
-        data.put("posts", posts); // ✅ 返回完整帖子列表，包含点赞收藏状态
-        data.put("postIds", postIds); // 保留 ID 列表，便于调试
+        data.put("posts", posts); // 返回完整帖子列表，包含点赞收藏状态
         data.put("page", page);
         data.put("pageSize", pageSize);
         data.put("count", posts.size()); // 使用实际获取到的帖子数量
@@ -260,8 +254,7 @@ public class RankingController {
         List<Post> posts = postService.getPostsByIdsWithRelation(postIds, currentUserId);
 
         Map<String, Object> data = new HashMap<>();
-        data.put("posts", posts); // ✅ 返回完整帖子列表，包含点赞收藏状态
-        data.put("postIds", postIds); // 保留 ID 列表，便于调试
+        data.put("posts", posts); // 返回完整帖子列表，包含点赞收藏状态
         data.put("page", page);
         data.put("pageSize", pageSize);
         data.put("count", posts.size()); // 使用实际获取到的帖子数量
@@ -287,8 +280,7 @@ public class RankingController {
         List<Post> posts = postService.getPostsByIdsWithRelation(postIds, currentUserId);
 
         Map<String, Object> data = new HashMap<>();
-        data.put("posts", posts); // ✅ 返回完整帖子列表，包含点赞收藏状态
-        data.put("postIds", postIds); // 保留 ID 列表，便于调试
+        data.put("posts", posts); // 返回完整帖子列表，包含点赞收藏状态
         data.put("page", page);
         data.put("pageSize", pageSize);
         data.put("count", posts.size()); // 使用实际获取到的帖子数量

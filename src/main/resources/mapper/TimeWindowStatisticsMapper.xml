@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wait.mapper.TimeWindowStatisticsMapper">
+
+    <resultMap id="TimeWindowStatisticsResultMap" type="com.wait.entity.domain.TimeWindowStatistics">
+        <id column="id" property="id"/>
+        <result column="metric" property="metric"/>
+        <result column="value" property="value"/>
+        <result column="timestamp" property="timestamp"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <!-- 批量插入统计数据 -->
+    <!-- 注意：created_at 和 updated_at 由数据库自动处理，不需要在插入时指定 -->
+    <insert id="batchInsert" parameterType="java.util.List">
+        INSERT INTO time_window_statistics (metric, value, timestamp)
+        VALUES
+        <foreach collection="statistics" item="item" separator=",">
+            (#{item.metric}, #{item.value}, #{item.timestamp})
+        </foreach>
+    </insert>
+
+    <!-- 查询指定指标和时间范围内的统计数据 -->
+    <select id="selectByMetricAndTimeRange" resultMap="TimeWindowStatisticsResultMap">
+        SELECT id, metric, value, timestamp, created_at, updated_at
+        FROM time_window_statistics
+        WHERE metric = #{metric}
+        AND timestamp >= #{startTime}
+        AND timestamp &lt;= #{endTime}
+        ORDER BY timestamp ASC
+    </select>
+
+    <!-- 查询指定时间范围内的所有统计数据 -->
+    <select id="selectByTimeRange" resultMap="TimeWindowStatisticsResultMap">
+        SELECT id, metric, value, timestamp, created_at, updated_at
+        FROM time_window_statistics
+        WHERE timestamp >= #{startTime}
+        AND timestamp &lt;= #{endTime}
+        ORDER BY metric ASC, timestamp ASC
+    </select>
+
+    <!-- 删除指定时间之前的数据 -->
+    <delete id="deleteByExpireTime">
+        DELETE FROM time_window_statistics
+        WHERE timestamp &lt; #{expireTime}
+    </delete>
+
+    <!-- 统计指定指标和时间范围内的数据数量 -->
+    <select id="countByMetricAndTimeRange" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM time_window_statistics
+        WHERE metric = #{metric}
+        AND timestamp >= #{startTime}
+        AND timestamp &lt;= #{endTime}
+    </select>
+
+</mapper>
+

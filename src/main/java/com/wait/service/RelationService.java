@@ -56,6 +56,41 @@ public interface RelationService {
      */
     boolean isMutualFollowing(Long userId1, Long userId2);
 
+    /**
+     * 获取多个用户的共同关注
+     * 
+     * @param userIds 用户ID列表（至少2个）
+     * @return 共同关注的用户ID集合
+     */
+    Set<Long> getMutualFollowingMultiple(List<Long> userIds);
+
+    /**
+     * 获取用户A关注但用户B未关注的用户（推荐关注）
+     * 
+     * @param userId1 用户A ID
+     * @param userId2 用户B ID
+     * @return 推荐关注的用户ID集合
+     */
+    Set<Long> getRecommendedFollowing(Long userId1, Long userId2);
+
+    /**
+     * 获取两个用户的所有关注（并集）
+     * 
+     * @param userId1 用户1 ID
+     * @param userId2 用户2 ID
+     * @return 所有关注的用户ID集合
+     */
+    Set<Long> getFollowingUnion(Long userId1, Long userId2);
+
+    /**
+     * 获取两个用户的共同粉丝
+     * 
+     * @param userId1 用户1 ID
+     * @param userId2 用户2 ID
+     * @return 共同粉丝的用户ID集合
+     */
+    Set<Long> getMutualFollowers(Long userId1, Long userId2);
+
     // ==================== 点赞相关 ====================
 
     /**

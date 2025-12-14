@@ -9,8 +9,24 @@
         VALUES (#{userId}, #{blockedUserId}, #{createdAt})
     </insert>
 
+    <!-- 批量插入 -->
+    <insert id="batchInsert">
+        INSERT INTO user_block (user_id, blocked_user_id, created_at) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.userId}, #{item.blockedUserId}, #{item.createdAt})
+        </foreach>
+    </insert>
+
     <delete id="delete">
         DELETE FROM user_block WHERE user_id = #{userId} AND blocked_user_id = #{blockedUserId}
+    </delete>
+
+    <!-- 批量删除 -->
+    <delete id="batchDelete">
+        DELETE FROM user_block WHERE (user_id, blocked_user_id) IN
+        <foreach collection="deletes" item="item" open="(" separator="," close=")">
+            (#{item.userId}, #{item.blockedUserId})
+        </foreach>
     </delete>
 
     <select id="exists" resultType="boolean">
@@ -27,6 +43,16 @@
         <foreach collection="targetUserIds" item="targetUserId" open="(" separator="," close=")">
             #{targetUserId}
         </foreach>
+    </select>
+
+    <!-- 查询所有有黑名单关系的用户ID列表（去重） -->
+    <select id="selectDistinctUserIds" resultType="java.lang.Long">
+        SELECT DISTINCT user_id FROM user_block ORDER BY user_id
+    </select>
+
+    <!-- 分页查询有黑名单关系的用户ID列表 -->
+    <select id="selectDistinctUserIdsWithPaging" resultType="java.lang.Long">
+        SELECT DISTINCT user_id FROM user_block ORDER BY user_id LIMIT #{limit} OFFSET #{offset}
     </select>
 
 </mapper>
