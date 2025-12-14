@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wait.mapper.BrowseHistoryMapper">
+
+    <resultMap id="BrowseHistoryResultMap" type="com.wait.entity.domain.BrowseHistory">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="post_id" property="postId"/>
+        <result column="browse_time" property="browseTime"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <!-- 批量插入浏览记录 -->
+    <!-- 注意：created_at 和 updated_at 由数据库自动处理，不需要在插入时指定 -->
+    <insert id="batchInsert" parameterType="java.util.List">
+        INSERT INTO browse_history (user_id, post_id, browse_time)
+        VALUES
+        <foreach collection="histories" item="item" separator=",">
+            (#{item.userId}, #{item.postId}, #{item.browseTime})
+        </foreach>
+    </insert>
+
+    <!-- 查询用户的浏览记录（按时间倒序） -->
+    <select id="selectByUserId" resultMap="BrowseHistoryResultMap">
+        SELECT id, user_id, post_id, browse_time, created_at, updated_at
+        FROM browse_history
+        WHERE user_id = #{userId}
+        ORDER BY browse_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <!-- 查询指定用户和帖子ID的浏览记录 -->
+    <select id="selectByUserIdAndPostId" resultMap="BrowseHistoryResultMap">
+        SELECT id, user_id, post_id, browse_time, created_at, updated_at
+        FROM browse_history
+        WHERE user_id = #{userId} AND post_id = #{postId}
+        ORDER BY browse_time DESC
+        LIMIT 1
+    </select>
+
+    <!-- 查询指定用户和时间范围内的浏览记录 -->
+    <select id="selectByUserIdAndTimeRange" resultMap="BrowseHistoryResultMap">
+        SELECT id, user_id, post_id, browse_time, created_at, updated_at
+        FROM browse_history
+        WHERE user_id = #{userId}
+        AND browse_time >= #{startTime}
+        AND browse_time &lt;= #{endTime}
+        ORDER BY browse_time DESC
+    </select>
+
+    <!-- 检查用户是否浏览过指定帖子 -->
+    <select id="existsByUserIdAndPostId" resultType="boolean">
+        SELECT COUNT(*) > 0
+        FROM browse_history
+        WHERE user_id = #{userId} AND post_id = #{postId}
+    </select>
+
+    <!-- 统计用户的浏览记录数量 -->
+    <select id="countByUserId" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM browse_history
+        WHERE user_id = #{userId}
+    </select>
+
+    <!-- 删除用户的所有浏览记录 -->
+    <delete id="deleteByUserId">
+        DELETE FROM browse_history
+        WHERE user_id = #{userId}
+    </delete>
+
+    <!-- 删除用户指定时间之前的浏览记录 -->
+    <delete id="deleteByUserIdAndExpireTime">
+        DELETE FROM browse_history
+        WHERE user_id = #{userId}
+        AND browse_time &lt; #{expireTime}
+    </delete>
+
+</mapper>
+

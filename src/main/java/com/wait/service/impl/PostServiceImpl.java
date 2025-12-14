@@ -7,14 +7,18 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wait.config.script.TimeLineScripts;
 import com.wait.entity.domain.Post;
+import com.wait.entity.domain.UserBase;
 import com.wait.mapper.PostMapper;
 import com.wait.service.CommentService;
 import com.wait.service.HotRankingService;
@@ -25,12 +29,10 @@ import com.wait.service.TimelineSortedSetService;
 import com.wait.service.UserService;
 import com.wait.util.BoundUtil;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor
 public class PostServiceImpl implements PostService {
 
     private final PostMapper postMapper;
@@ -46,6 +48,23 @@ public class PostServiceImpl implements PostService {
     private final RelationService relationService;
     private final CommentService commentService;
     private final UserService userService;
+
+    public PostServiceImpl(PostMapper postMapper, TimeLineScripts timeLineScripts,
+            ObjectMapper redisObjectMapper, BoundUtil boundUtil,
+            TimelineSortedSetService timelineSortedSetService, HotRankingService hotRankingService,
+            RankingService rankingService, @Lazy RelationService relationService,
+            CommentService commentService, UserService userService) {
+        this.postMapper = postMapper;
+        this.timeLineScripts = timeLineScripts;
+        this.redisObjectMapper = redisObjectMapper;
+        this.boundUtil = boundUtil;
+        this.timelineSortedSetService = timelineSortedSetService;
+        this.hotRankingService = hotRankingService;
+        this.rankingService = rankingService;
+        this.relationService = relationService;
+        this.commentService = commentService;
+        this.userService = userService;
+    }
 
     private static final String POST_PREFIX = "post:";
     private static final String USER_POST_REL_PREFIX = "user:post:rel:";
@@ -404,12 +423,12 @@ public class PostServiceImpl implements PostService {
         // 4. 批量获取用户名（从帖子中提取userId，去重后批量查询）
         Set<Long> userIds = posts.stream()
                 .map(Post::getUserId)
-                .filter(java.util.Objects::nonNull)
-                .collect(java.util.stream.Collectors.toSet());
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
         Map<Long, String> usernameMap = new HashMap<>();
         for (Long userId : userIds) {
             try {
-                com.wait.entity.domain.UserBase user = userService.findById(userId);
+                UserBase user = userService.findById(userId);
                 if (user != null && user.getUsername() != null) {
                     usernameMap.put(userId, user.getUsername());
                 }
@@ -497,28 +516,30 @@ public class PostServiceImpl implements PostService {
 
     /**
      * 评论数更新时调用，更新排行榜和热度分数
+     * 注意：此方法已废弃，评论数增减已直接在incrementCommentCount和decrementCommentCount中处理
      * 
      * @param postId 帖子ID
+     * @deprecated 评论数增减已直接在对应方法中处理，不再需要此方法
      */
+    @Deprecated
     @Override
     public void onCommentCountChanged(Long postId) {
         if (postId == null) {
             return;
         }
         try {
-            // 更新评论排行榜
-            rankingService.onComment(postId);
-            // 更新热度分数
+            // 更新热度分数（排行榜已在increment/decrement中更新）
             hotRankingService.onComment(postId);
-            log.debug("Updated ranking and hot score for post {} due to comment count change", postId);
+            log.debug("Updated hot score for post {} due to comment count change", postId);
         } catch (Exception e) {
-            log.error("Failed to update ranking/hot score for post {} due to comment", postId, e);
+            log.error("Failed to update hot score for post {} due to comment", postId, e);
             // 不影响主流程
         }
     }
 
     /**
      * 增加评论数
+     * 只更新Redis数据，数据库通过定时任务同步（Write-Behind模式）
      * 
      * @param postId 帖子ID
      */
@@ -528,17 +549,13 @@ public class PostServiceImpl implements PostService {
             return;
         }
         try {
-            // 更新数据库
-            Post post = postMapper.selectById(postId);
-            if (post != null) {
-                post.setCommentCount((post.getCommentCount() != null ? post.getCommentCount() : 0) + 1);
-                postMapper.update(post);
-                // 更新缓存
-                boundUtil.set(POST_PREFIX + postId, post, POST_EXPIRE_TIME, TimeUnit.SECONDS);
-            }
-            // 更新排行榜和热度
-            onCommentCountChanged(postId);
-            log.debug("Incremented comment count for post {}", postId);
+            // 只更新Redis排行榜（不更新数据库，由定时任务同步）
+            rankingService.onComment(postId);
+
+            // 更新热度分数
+            hotRankingService.onComment(postId);
+
+            log.debug("Incremented comment count in Redis for post {}", postId);
         } catch (Exception e) {
             log.error("Failed to increment comment count for post {}", postId, e);
         }
@@ -546,6 +563,7 @@ public class PostServiceImpl implements PostService {
 
     /**
      * 减少评论数
+     * 只更新Redis数据，数据库通过定时任务同步（Write-Behind模式）
      * 
      * @param postId 帖子ID
      */
@@ -555,17 +573,13 @@ public class PostServiceImpl implements PostService {
             return;
         }
         try {
-            // 更新数据库
-            Post post = postMapper.selectById(postId);
-            if (post != null && post.getCommentCount() != null && post.getCommentCount() > 0) {
-                post.setCommentCount(post.getCommentCount() - 1);
-                postMapper.update(post);
-                // 更新缓存
-                boundUtil.set(POST_PREFIX + postId, post, POST_EXPIRE_TIME, TimeUnit.SECONDS);
-            }
-            // 更新排行榜和热度
-            onCommentCountChanged(postId);
-            log.debug("Decremented comment count for post {}", postId);
+            // 只更新Redis排行榜（不更新数据库，由定时任务同步）
+            rankingService.onUncomment(postId);
+
+            // 更新热度分数
+            hotRankingService.onComment(postId); // 热度分数会重新计算，使用最新的评论数
+
+            log.debug("Decremented comment count in Redis for post {}", postId);
         } catch (Exception e) {
             log.error("Failed to decrement comment count for post {}", postId, e);
         }

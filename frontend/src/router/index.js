@@ -99,6 +99,30 @@ const routes = [
     meta: { requiresAuth: true, title: '搜索' }
   },
   {
+    path: '/statistics',
+    name: 'Statistics',
+    component: () => import('@/views/StatisticsView.vue'),
+    meta: { requiresAuth: true, title: '流量走势图' }
+  },
+  {
+    path: '/discover',
+    name: 'Discover',
+    component: () => import('@/views/DiscoverView.vue'),
+    meta: { requiresAuth: true, title: '发现' }
+  },
+  {
+    path: '/browse-history',
+    name: 'BrowseHistory',
+    component: () => import('@/views/BrowseHistoryView.vue'),
+    meta: { requiresAuth: true, title: '浏览记录' }
+  },
+  {
+    path: '/uv-statistics',
+    name: 'UVStatistics',
+    component: () => import('@/views/UVStatisticsView.vue'),
+    meta: { requiresAuth: true, title: 'UV统计' }
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/NotFound.vue'),

@@ -12,12 +12,25 @@
         DELETE FROM post_like WHERE post_id = #{postId} AND user_id = #{userId}
     </delete>
 
+    <!-- 批量删除 -->
+    <delete id="batchDelete">
+        DELETE FROM post_like WHERE (post_id, user_id) IN
+        <foreach collection="deletes" item="item" open="(" separator="," close=")">
+            (#{item.postId}, #{item.userId})
+        </foreach>
+    </delete>
+
     <select id="exists" resultType="boolean">
         SELECT COUNT(*) > 0 FROM post_like WHERE post_id = #{postId} AND user_id = #{userId}
     </select>
 
     <select id="countByPostId" resultType="int">
         SELECT COUNT(*) FROM post_like WHERE post_id = #{postId}
+    </select>
+
+    <!-- 根据帖子ID查询所有点赞的用户ID列表 -->
+    <select id="selectUserIdsByPostId" resultType="java.lang.Long">
+        SELECT user_id FROM post_like WHERE post_id = #{postId}
     </select>
 
     <!-- 批量查询存在性：返回已存在的 (postId, userId) 对 -->
@@ -39,6 +52,23 @@
 
     <select id="selectAll" resultType="com.wait.entity.domain.PostLike">
         SELECT post_id AS postId, user_id AS userId FROM post_like
+    </select>
+
+    <!-- 查询所有有点赞的帖子ID和点赞数（用于定时同步） -->
+    <select id="selectAllPostLikeCounts" resultType="com.wait.entity.domain.PostLike">
+        SELECT post_id AS postId, COUNT(*) AS id
+        FROM post_like
+        GROUP BY post_id
+    </select>
+
+    <!-- 查询所有有点赞的帖子ID列表（去重） -->
+    <select id="selectDistinctPostIds" resultType="java.lang.Long">
+        SELECT DISTINCT post_id FROM post_like ORDER BY post_id
+    </select>
+
+    <!-- 分页查询有点赞的帖子ID列表 -->
+    <select id="selectDistinctPostIdsWithPaging" resultType="java.lang.Long">
+        SELECT DISTINCT post_id FROM post_like ORDER BY post_id LIMIT #{limit} OFFSET #{offset}
     </select>
 
 </mapper>

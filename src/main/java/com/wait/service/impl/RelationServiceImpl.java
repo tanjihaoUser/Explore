@@ -5,21 +5,24 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import com.wait.config.script.RelationScripts;
+import com.wait.entity.domain.UserBase;
 import com.wait.service.HotRankingService;
+import com.wait.service.NotificationService;
+import com.wait.service.PostService;
 import com.wait.service.RankingService;
 import com.wait.service.RelationPersistenceService;
 import com.wait.service.RelationService;
+import com.wait.service.StatisticsService;
+import com.wait.service.UserService;
 import com.wait.util.BoundUtil;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -28,15 +31,33 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class RelationServiceImpl implements RelationService {
 
     private final BoundUtil boundUtil;
-    private final RedisTemplate<String, Object> redisTemplate;
     private final RelationScripts relationScripts;
     private final RelationPersistenceService persistenceService;
     private final RankingService rankingService;
     private final HotRankingService hotRankingService;
+    private final NotificationService notificationService;
+    private final PostService postService;
+    private final UserService userService;
+    private final StatisticsService statisticsService;
+
+    public RelationServiceImpl(BoundUtil boundUtil, RelationScripts relationScripts,
+            RelationPersistenceService persistenceService, RankingService rankingService,
+            HotRankingService hotRankingService, NotificationService notificationService,
+            @Lazy PostService postService, UserService userService,
+            StatisticsService statisticsService) {
+        this.boundUtil = boundUtil;
+        this.relationScripts = relationScripts;
+        this.persistenceService = persistenceService;
+        this.rankingService = rankingService;
+        this.hotRankingService = hotRankingService;
+        this.notificationService = notificationService;
+        this.postService = postService;
+        this.userService = userService;
+        this.statisticsService = statisticsService;
+    }
 
     // Redis Key 前缀
     private static final String USER_FOLLOW_PREFIX = "user:follow:";
@@ -78,6 +99,23 @@ public class RelationServiceImpl implements RelationService {
             } catch (Exception e) {
                 // 不抛出异常，Redis已成功，数据库写入失败可以通过补偿机制处理
                 log.error("Failed to persist follow to DB, but Redis operation succeeded", e);
+            }
+
+            // 异步发送关注通知给被关注的用户
+            try {
+                UserBase follower = userService.findById(followerId);
+                String followerName = follower != null && follower.getUsername() != null
+                        ? follower.getUsername()
+                        : "用户" + followerId;
+                notificationService.sendNotificationAsync(
+                        followedId,
+                        "follow",
+                        String.format("%s关注了你", followerName),
+                        followerId);
+            } catch (Exception e) {
+                // 通知发送失败不影响主流程
+                log.error("Failed to send follow notification: follower={}, followed={}",
+                        followerId, followedId, e);
             }
 
             return true;
@@ -162,33 +200,68 @@ public class RelationServiceImpl implements RelationService {
             return Collections.emptySet();
         }
         // 使用交集运算获取共同关注
-        Set<Object> mutual = redisTemplate.opsForSet().intersect(
+        return boundUtil.sIntersect(
                 USER_FOLLOW_PREFIX + userId1,
-                USER_FOLLOW_PREFIX + userId2);
-
-        if (mutual == null || mutual.isEmpty()) {
-            return Collections.emptySet();
-        }
-
-        // 转换为 Long Set
-        return mutual.stream()
-                .map(obj -> {
-                    if (obj instanceof Long) {
-                        return (Long) obj;
-                    } else if (obj instanceof Number) {
-                        return ((Number) obj).longValue();
-                    } else if (obj instanceof String) {
-                        return Long.parseLong((String) obj);
-                    }
-                    return null;
-                })
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+                USER_FOLLOW_PREFIX + userId2,
+                Long.class);
     }
 
     @Override
     public boolean isMutualFollowing(Long userId1, Long userId2) {
         return isFollowing(userId1, userId2) && isFollowing(userId2, userId1);
+    }
+
+    @Override
+    public Set<Long> getMutualFollowingMultiple(List<Long> userIds) {
+        if (userIds == null || userIds.size() < 2) {
+            return Collections.emptySet();
+        }
+
+        // 使用 SINTER 获取多个用户的共同关注
+        List<String> keys = userIds.stream()
+                .map(userId -> USER_FOLLOW_PREFIX + userId)
+                .collect(Collectors.toList());
+
+        return boundUtil.sIntersect(keys, Long.class);
+    }
+
+    @Override
+    public Set<Long> getRecommendedFollowing(Long userId1, Long userId2) {
+        if (userId1 == null || userId2 == null) {
+            return Collections.emptySet();
+        }
+
+        // 使用 SDIFF 获取用户1关注但用户2未关注的用户
+        return boundUtil.sDifference(
+                USER_FOLLOW_PREFIX + userId1,
+                USER_FOLLOW_PREFIX + userId2,
+                Long.class);
+    }
+
+    @Override
+    public Set<Long> getFollowingUnion(Long userId1, Long userId2) {
+        if (userId1 == null || userId2 == null) {
+            return Collections.emptySet();
+        }
+
+        // 使用 SUNION 获取两个用户的所有关注
+        return boundUtil.sUnion(
+                USER_FOLLOW_PREFIX + userId1,
+                USER_FOLLOW_PREFIX + userId2,
+                Long.class);
+    }
+
+    @Override
+    public Set<Long> getMutualFollowers(Long userId1, Long userId2) {
+        if (userId1 == null || userId2 == null) {
+            return Collections.emptySet();
+        }
+
+        // 使用 SINTER 获取两个用户的共同粉丝
+        return boundUtil.sIntersect(
+                USER_FOLLOWER_PREFIX + userId1,
+                USER_FOLLOWER_PREFIX + userId2,
+                Long.class);
     }
 
     // ==================== 点赞相关 ====================
@@ -226,6 +299,36 @@ public class RelationServiceImpl implements RelationService {
             } catch (Exception e) {
                 log.error("Failed to update ranking/hot score for post {}", postId, e);
                 // 不影响主流程，继续执行
+            }
+
+            // 记录点赞统计
+            try {
+                statisticsService.recordLike(postId, true);
+            } catch (Exception e) {
+                log.error("Failed to record like statistics: postId={}", postId, e);
+            }
+
+            // 异步发送点赞通知给帖子作者
+            try {
+                com.wait.entity.domain.Post post = postService.getPostById(postId);
+                if (post != null) {
+                    Long postAuthorId = post.getUserId();
+                    // 如果不是自己点赞的，发送通知
+                    if (!postAuthorId.equals(userId)) {
+                        com.wait.entity.domain.UserBase liker = userService.findById(userId);
+                        String likerName = liker != null && liker.getUsername() != null
+                                ? liker.getUsername()
+                                : "用户" + userId;
+                        notificationService.sendNotificationAsync(
+                                postAuthorId,
+                                "like",
+                                String.format("%s点赞了你的帖子", likerName),
+                                postId);
+                    }
+                }
+            } catch (Exception e) {
+                // 通知发送失败不影响主流程
+                log.error("Failed to send like notification: user={}, post={}", userId, postId, e);
             }
 
             return true;
@@ -267,6 +370,13 @@ public class RelationServiceImpl implements RelationService {
             } catch (Exception e) {
                 log.error("Failed to update ranking/hot score for post {}", postId, e);
                 // 不影响主流程，继续执行
+            }
+
+            // 记录取消点赞统计
+            try {
+                statisticsService.recordLike(postId, false);
+            } catch (Exception e) {
+                log.error("Failed to record unlike statistics: postId={}", postId, e);
             }
 
             return true;
@@ -359,6 +469,40 @@ public class RelationServiceImpl implements RelationService {
                 // 不影响主流程，继续执行
             }
 
+            // 记录收藏统计
+            try {
+                statisticsService.recordFavorite(postId, true);
+            } catch (Exception e) {
+                log.error("Failed to record favorite statistics: postId={}", postId, e);
+            }
+
+            // 异步发送收藏通知给帖子作者（可选，通常收藏不发送通知，这里提供选项）
+            // 如果需要发送收藏通知，取消下面的注释
+            /*
+             * try {
+             * com.wait.entity.domain.Post post = postService.getPostById(postId);
+             * if (post != null) {
+             * Long postAuthorId = post.getUserId();
+             * // 如果不是自己收藏的，发送通知
+             * if (!postAuthorId.equals(userId)) {
+             * com.wait.entity.domain.UserBase favoriter = userService.findById(userId);
+             * String favoriterName = favoriter != null && favoriter.getUsername() != null
+             * ? favoriter.getUsername() : "用户" + userId;
+             * notificationService.sendNotificationAsync(
+             * postAuthorId,
+             * "favorite",
+             * String.format("%s收藏了你的帖子", favoriterName),
+             * postId
+             * );
+             * }
+             * }
+             * } catch (Exception e) {
+             * // 通知发送失败不影响主流程
+             * log.error("Failed to send favorite notification: user={}, post={}", userId,
+             * postId, e);
+             * }
+             */
+
             return true;
         }
         log.debug("user {} already favorites post {}", userId, postId);
@@ -398,6 +542,13 @@ public class RelationServiceImpl implements RelationService {
             } catch (Exception e) {
                 log.error("Failed to update ranking/hot score for post {}", postId, e);
                 // 不影响主流程，继续执行
+            }
+
+            // 记录取消收藏统计
+            try {
+                statisticsService.recordFavorite(postId, false);
+            } catch (Exception e) {
+                log.error("Failed to record unfavorite statistics: postId={}", postId, e);
             }
 
             return true;

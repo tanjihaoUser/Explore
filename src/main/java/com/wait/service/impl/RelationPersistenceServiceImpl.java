@@ -1,14 +1,15 @@
 package com.wait.service.impl;
 
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
+import com.wait.entity.domain.UserBlock;
+import com.wait.mapper.UserBlockMapper;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.stereotype.Service;
@@ -21,10 +22,10 @@ import com.wait.mapper.FollowMapper;
 import com.wait.mapper.PostFavoriteMapper;
 import com.wait.mapper.PostLikeMapper;
 import com.wait.service.RelationPersistenceService;
+import com.wait.sync.write.RelationWriteBehindStrategy;
 import com.wait.util.AsyncSQLWrapper;
 import com.wait.util.BoundUtil;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /*
@@ -68,16 +69,15 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class RelationPersistenceServiceImpl implements RelationPersistenceService {
 
     private final BoundUtil boundUtil;
-
     private final FollowMapper followMapper;
     private final PostLikeMapper postLikeMapper;
     private final PostFavoriteMapper postFavoriteMapper;
-    private final com.wait.mapper.UserBlockMapper userBlockMapper;
+    private final UserBlockMapper userBlockMapper;
     private final AsyncSQLWrapper asyncSQLWrapper;
+    private final RelationWriteBehindStrategy relationWriteBehindStrategy;
 
     @Qualifier("refreshScheduler")
     private final ThreadPoolTaskScheduler taskScheduler;
@@ -91,15 +91,39 @@ public class RelationPersistenceServiceImpl implements RelationPersistenceServic
     /** 定时批量写入延迟时间：30 s */
     private static final long BATCH_FLUSH_DELAY_MS = TimeUnit.SECONDS.toMillis(30);
 
-    /** 定量批量写入阈值：当缓冲达到 5 条时立即写入 */
-    private static final int BATCH_SIZE_THRESHOLD = 5;
+    /** 定量批量写入阈值：当缓冲达到 100 条时立即写入 */
+    private static final int BATCH_SIZE_THRESHOLD = 100;
 
-    // ==================== 批量缓冲 ====================
-    /** 批量任务缓冲：使用单例任务对象，所有操作都缓冲到同一个任务中 */
-    private final RelationBatchTask batchTask = new RelationBatchTask();
+    // ==================== 批量任务管理器（使用新的策略类）====================
+    /** 点赞批量任务管理器 */
+    private final RelationWriteBehindStrategy.BatchTaskManager<String, Boolean> likeBatchManager;
 
-    /** 定时刷库任务：用于定时批量写入 */
-    private volatile ScheduledFuture<?> scheduledFlushTask;
+    /** 收藏批量任务管理器 */
+    private final RelationWriteBehindStrategy.BatchTaskManager<String, Boolean> favoriteBatchManager;
+
+    // 初始化批量任务管理器
+    public RelationPersistenceServiceImpl(BoundUtil boundUtil, FollowMapper followMapper,
+            PostLikeMapper postLikeMapper, PostFavoriteMapper postFavoriteMapper,
+            UserBlockMapper userBlockMapper, AsyncSQLWrapper asyncSQLWrapper,
+            RelationWriteBehindStrategy relationWriteBehindStrategy,
+            @Qualifier("refreshScheduler") ThreadPoolTaskScheduler taskScheduler) {
+        this.boundUtil = boundUtil;
+        this.followMapper = followMapper;
+        this.postLikeMapper = postLikeMapper;
+        this.postFavoriteMapper = postFavoriteMapper;
+        this.userBlockMapper = userBlockMapper;
+        this.asyncSQLWrapper = asyncSQLWrapper;
+        this.relationWriteBehindStrategy = relationWriteBehindStrategy;
+        this.taskScheduler = taskScheduler;
+
+        // 初始化点赞批量任务管理器
+        this.likeBatchManager = relationWriteBehindStrategy.createBatchTaskManager(
+                BATCH_FLUSH_DELAY_MS, BATCH_SIZE_THRESHOLD, this::flushLikesToDatabase);
+
+        // 初始化收藏批量任务管理器
+        this.favoriteBatchManager = relationWriteBehindStrategy.createBatchTaskManager(
+                BATCH_FLUSH_DELAY_MS, BATCH_SIZE_THRESHOLD, this::flushFavoritesToDatabase);
+    }
 
     // ==================== 关注关系持久化（Write-Through）====================
 
@@ -138,20 +162,11 @@ public class RelationPersistenceServiceImpl implements RelationPersistenceServic
 
     @Override
     public CompletableFuture<Void> persistLike(Long userId, Long postId, boolean isLike) {
-        // 1. 将操作添加到缓冲队列（去重：同一 key 的多次操作只保留最新状态）
-        batchTask.addLikeOperation(postId, userId, isLike);
+        // 使用新的批量任务管理器，支持定时定量混合方案
+        String key = postId + ":" + userId;
+        likeBatchManager.addOperation(key, isLike);
 
-        // 2. 检查是否达到定量阈值，如果达到则立即触发批量写入
-        if (batchTask.getTotalOperationCount() >= BATCH_SIZE_THRESHOLD) {
-            log.debug("Batch size threshold reached ({}), triggering immediate flush",
-                    batchTask.getTotalOperationCount());
-            flushBatchToDatabase();
-        } else {
-            // 3. 未达到阈值，确保定时任务已启动（如果未启动）
-            scheduleBatchFlushTask();
-        }
-
-        // 4. 立即返回 CompletableFuture，不阻塞主流程
+        // 立即返回 CompletableFuture，不阻塞主流程
         return CompletableFuture.completedFuture(null);
     }
 
@@ -159,20 +174,11 @@ public class RelationPersistenceServiceImpl implements RelationPersistenceServic
 
     @Override
     public CompletableFuture<Void> persistFavorite(Long userId, Long postId, boolean isFavorite) {
-        // 1. 将操作添加到缓冲队列（去重：同一 key 的多次操作只保留最新状态）
-        batchTask.addFavoriteOperation(userId, postId, isFavorite);
+        // 使用新的批量任务管理器，支持定时定量混合方案
+        String key = userId + ":" + postId;
+        favoriteBatchManager.addOperation(key, isFavorite);
 
-        // 2. 检查是否达到定量阈值，如果达到则立即触发批量写入
-        if (batchTask.getTotalOperationCount() >= BATCH_SIZE_THRESHOLD) {
-            log.debug("Batch size threshold reached ({}), triggering immediate flush",
-                    batchTask.getTotalOperationCount());
-            flushBatchToDatabase();
-        } else {
-            // 3. 未达到阈值，确保定时任务已启动（如果未启动）
-            scheduleBatchFlushTask();
-        }
-
-        // 4. 立即返回 CompletableFuture，不阻塞主流程
+        // 立即返回 CompletableFuture，不阻塞主流程
         return CompletableFuture.completedFuture(null);
     }
 
@@ -187,7 +193,7 @@ public class RelationPersistenceServiceImpl implements RelationPersistenceServic
                 // 检查数据库中是否已存在
                 boolean exists = userBlockMapper.exists(userId, blockedUserId);
                 if (!exists) {
-                    com.wait.entity.domain.UserBlock userBlock = com.wait.entity.domain.UserBlock.builder()
+                    UserBlock userBlock = com.wait.entity.domain.UserBlock.builder()
                             .userId(userId)
                             .blockedUserId(blockedUserId)
                             .createdAt(System.currentTimeMillis())
@@ -339,77 +345,12 @@ public class RelationPersistenceServiceImpl implements RelationPersistenceServic
     // ==================== 批量写入核心方法 ====================
 
     /**
-     * 启动定时批量刷库任务
-     * 只在任务不存在时创建，避免每次操作都重置定时器
-     */
-    private void scheduleBatchFlushTask() {
-        // 如果任务已存在且未完成，不重置定时器，保持固定刷新周期
-        if (scheduledFlushTask != null && !scheduledFlushTask.isDone() && !scheduledFlushTask.isCancelled()) {
-            return;
-        }
-
-        // 任务不存在或已取消/完成，创建新任务
-        scheduledFlushTask = taskScheduler.schedule(
-                this::flushBatchToDatabase,
-                new Date(System.currentTimeMillis() + BATCH_FLUSH_DELAY_MS));
-
-        log.debug("Scheduled batch flush task, delay: {}ms", BATCH_FLUSH_DELAY_MS);
-    }
-
-    /**
-     * 批量刷写到数据库 - 核心方法
-     * 将缓冲的点赞和收藏操作批量写入数据库
+     * 批量写入点赞操作到数据库
+     * 由RelationWriteBehindStrategy的BatchTaskManager回调调用
      */
     @Transactional
-    public void flushBatchToDatabase() {
-        // 1. 获取当前缓冲的任务（使用同步块确保线程安全）
-        RelationBatchTask currentTask;
-        synchronized (batchTask) {
-            if (!batchTask.hasPendingOperations()) {
-                log.debug("No pending operations to flush");
-                return;
-            }
-
-            // 创建当前任务的快照，避免在写入过程中新操作影响
-            currentTask = new RelationBatchTask();
-            currentTask.getLikeOperations().putAll(batchTask.getLikeOperations());
-            currentTask.getFavoriteOperations().putAll(batchTask.getFavoriteOperations());
-
-            // 清空原任务，准备接收新操作
-            batchTask.clear();
-        }
-
-        // 2. 取消已存在的定时任务（因为已经手动触发了）
-        if (scheduledFlushTask != null && !scheduledFlushTask.isDone()) {
-            scheduledFlushTask.cancel(false);
-            scheduledFlushTask = null;
-        }
-
-        // 3. 异步执行批量写入，不阻塞主流程
-        asyncSQLWrapper.executeAsyncVoid(() -> {
-            try {
-                flushLikesToDatabase(currentTask);
-                flushFavoritesToDatabase(currentTask);
-                log.info("Batch flush completed: {} likes, {} favorites",
-                        currentTask.getLikeOperationCount(),
-                        currentTask.getFavoriteOperationCount());
-            } catch (Exception e) {
-                log.error("Failed to flush batch to database", e);
-                // 写入失败时，将任务重新放回缓冲队列（补偿机制）
-                synchronized (batchTask) {
-                    batchTask.getLikeOperations().putAll(currentTask.getLikeOperations());
-                    batchTask.getFavoriteOperations().putAll(currentTask.getFavoriteOperations());
-                }
-                throw e;
-            }
-        });
-    }
-
-    /**
-     * 批量写入点赞操作到数据库
-     */
-    private void flushLikesToDatabase(RelationBatchTask task) {
-        if (task.getLikeOperations().isEmpty()) {
+    private void flushLikesToDatabase(Map<String, Boolean> operations) {
+        if (operations == null || operations.isEmpty()) {
             return;
         }
 
@@ -417,7 +358,7 @@ public class RelationPersistenceServiceImpl implements RelationPersistenceServic
         List<PostLike> likeCandidates = new ArrayList<>();
         List<PostLike> toDelete = new ArrayList<>();
 
-        for (java.util.Map.Entry<String, Boolean> entry : task.getLikeOperations().entrySet()) {
+        for (java.util.Map.Entry<String, Boolean> entry : operations.entrySet()) {
             String[] parts = entry.getKey().split(":");
             Long postId = Long.parseLong(parts[0]);
             Long userId = Long.parseLong(parts[1]);
@@ -479,9 +420,11 @@ public class RelationPersistenceServiceImpl implements RelationPersistenceServic
 
     /**
      * 批量写入收藏操作到数据库
+     * 由RelationWriteBehindStrategy的BatchTaskManager回调调用
      */
-    private void flushFavoritesToDatabase(RelationBatchTask task) {
-        if (task.getFavoriteOperations().isEmpty()) {
+    @Transactional
+    private void flushFavoritesToDatabase(Map<String, Boolean> operations) {
+        if (operations == null || operations.isEmpty()) {
             return;
         }
 
@@ -490,7 +433,7 @@ public class RelationPersistenceServiceImpl implements RelationPersistenceServic
         List<PostFavorite> toDelete = new ArrayList<>();
         long now = System.currentTimeMillis();
 
-        for (java.util.Map.Entry<String, Boolean> entry : task.getFavoriteOperations().entrySet()) {
+        for (java.util.Map.Entry<String, Boolean> entry : operations.entrySet()) {
             String[] parts = entry.getKey().split(":");
             Long userId = Long.parseLong(parts[0]);
             Long postId = Long.parseLong(parts[1]);

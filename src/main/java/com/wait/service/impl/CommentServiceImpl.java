@@ -13,7 +13,9 @@ import com.wait.mapper.CommentMapper;
 import com.wait.mapper.PostMapper;
 import com.wait.service.CommentService;
 import com.wait.service.HotRankingService;
+import com.wait.service.NotificationService;
 import com.wait.service.RankingService;
+import com.wait.service.UserService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +32,8 @@ public class CommentServiceImpl implements CommentService {
     private final PostMapper postMapper;
     private final RankingService rankingService;
     private final HotRankingService hotRankingService;
+    private final NotificationService notificationService;
+    private final UserService userService;
 
     @Override
     @Transactional
@@ -81,6 +85,45 @@ public class CommentServiceImpl implements CommentService {
         } catch (Exception e) {
             log.error("Failed to update ranking/hot score for post {}", postId, e);
             // 不影响主流程
+        }
+
+        // 异步发送通知
+        try {
+            com.wait.entity.domain.UserBase commenter = userService.findById(userId);
+            String commenterName = commenter != null && commenter.getUsername() != null
+                    ? commenter.getUsername()
+                    : "用户" + userId;
+
+            if (parentId != null) {
+                // 回复评论：通知被回复的用户
+                Comment parentComment = commentMapper.selectById(parentId);
+                if (parentComment != null) {
+                    Long parentCommentAuthorId = parentComment.getUserId();
+                    // 如果不是自己回复自己，发送通知
+                    if (!parentCommentAuthorId.equals(userId)) {
+                        notificationService.sendNotificationAsync(
+                                parentCommentAuthorId,
+                                "reply",
+                                String.format("%s回复了你的评论", commenterName),
+                                parentId);
+                    }
+                }
+            } else {
+                // 评论帖子：通知帖子作者
+                Long postAuthorId = post.getUserId();
+                // 如果不是自己评论自己的帖子，发送通知
+                if (!postAuthorId.equals(userId)) {
+                    notificationService.sendNotificationAsync(
+                            postAuthorId,
+                            "comment",
+                            String.format("%s评论了你的帖子", commenterName),
+                            postId);
+                }
+            }
+        } catch (Exception e) {
+            // 通知发送失败不影响主流程
+            log.error("Failed to send comment notification: user={}, post={}, parent={}",
+                    userId, postId, parentId, e);
         }
 
         return comment;

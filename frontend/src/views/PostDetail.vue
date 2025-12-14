@@ -40,6 +40,13 @@
             <el-icon><Star /></el-icon>
             {{ post.favoriteCount || 0 }}
           </el-button>
+          <el-button
+            type="info"
+            disabled
+          >
+            <el-icon><View /></el-icon>
+            {{ viewCount }}
+          </el-button>
         </el-button-group>
       </div>
     </el-card>
@@ -110,7 +117,10 @@ import { getPostById, deletePost } from "@/api/post";
 import { likePost, unlikePost, favoritePost, unfavoritePost, checkLiked, checkFavorited } from "@/api/relation";
 import { getLikeCount, getFavoriteCount } from "@/api/relation";
 import { getPostComments, createComment, deleteComment, getCommentCount } from "@/api/comment";
+import { getPostViewStatistics } from "@/api/statistics";
+import { recordBrowse } from "@/api/browseHistory";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { View } from "@element-plus/icons-vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -128,15 +138,19 @@ const commentPageSize = ref(20);
 const commentTotal = ref(0);
 const commentCount = ref(0);
 const newComment = ref("");
+const viewCount = ref(0);
 
 onMounted(() => {
   loadPost();
   loadComments();
+  loadViewCount();
+  recordBrowseHistory();
 });
 
 async function loadPost() {
   try {
-    const response = await getPostById(postId.value);
+    // 传递 userId 参数，后端会自动记录浏览历史
+    const response = await getPostById(postId.value, userStore.userId);
     // 兼容两种响应格式
     const isSuccess = (response.data.code === 200) || (response.data.success === true);
     
@@ -399,6 +413,32 @@ function handleCommentSizeChange(val) {
 function handleCommentPageChange(val) {
   commentPage.value = val;
   loadComments();
+}
+
+async function loadViewCount() {
+  try {
+    const response = await getPostViewStatistics(postId.value, 24);
+    if (response.data.code === 200) {
+      const data = response.data.data;
+      // 计算总浏览量
+      viewCount.value = data.total || 0;
+    }
+  } catch (error) {
+    console.error("加载浏览量失败:", error);
+  }
+}
+
+async function recordBrowseHistory() {
+  if (!userStore.userId || !postId.value) {
+    return;
+  }
+  
+  try {
+    await recordBrowse(userStore.userId, postId.value);
+  } catch (error) {
+    // 静默失败，不影响用户体验
+    console.error("记录浏览历史失败:", error);
+  }
 }
 </script>
 

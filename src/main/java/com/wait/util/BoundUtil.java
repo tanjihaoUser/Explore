@@ -8,6 +8,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -22,12 +23,16 @@ import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.InvalidDataAccessApiUsageException;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.data.redis.RedisSystemException;
+import org.springframework.data.redis.connection.RedisZSetCommands;
 import org.springframework.data.redis.core.BoundHashOperations;
 import org.springframework.data.redis.core.BoundListOperations;
 import org.springframework.data.redis.core.BoundSetOperations;
 import org.springframework.data.redis.core.BoundValueOperations;
 import org.springframework.data.redis.core.BoundZSetOperations;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
+import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
@@ -765,6 +770,236 @@ public class BoundUtil {
         return value != null ? safeCast(value, clazz) : null;
     }
 
+    /**
+     * 计算多个Set的交集（SINTER）
+     * 返回同时存在于所有指定Set中的成员
+     * 
+     * @param keys  Set key列表（至少包含一个key）
+     * @param clazz 返回类型
+     * @return 交集结果，如果任一Set不存在或为空则返回空Set
+     * 
+     *         示例：
+     *         Set1 = {a, b, c}
+     *         Set2 = {b, c, d}
+     *         intersect([Set1, Set2]) = {b, c}
+     */
+    public <T> Set<T> sIntersect(List<String> keys, Class<T> clazz) {
+        if (keys == null || keys.isEmpty()) {
+            throw new IllegalArgumentException("Keys cannot be null or empty");
+        }
+
+        Set<Object> result = redisTemplate.opsForSet().intersect(keys);
+        if (result == null || result.isEmpty()) {
+            return Collections.emptySet();
+        }
+
+        Set<T> typedResult = new HashSet<>();
+        for (Object obj : result) {
+            typedResult.add(safeCast(obj, clazz));
+        }
+        return typedResult;
+    }
+
+    /**
+     * 计算两个Set的交集（SINTER）
+     * 
+     * @param key1  第一个Set key
+     * @param key2  第二个Set key
+     * @param clazz 返回类型
+     * @return 交集结果
+     */
+    public <T> Set<T> sIntersect(String key1, String key2, Class<T> clazz) {
+        return sIntersect(Arrays.asList(key1, key2), clazz);
+    }
+
+    /**
+     * 计算多个Set的交集并存储到目标Set（SINTERSTORE）
+     * 
+     * @param destKey 目标Set key（存储交集结果）
+     * @param keys    源Set key列表
+     * @return 存储到目标Set的成员数量
+     */
+    public Long sIntersectAndStore(String destKey, List<String> keys) {
+        if (keys == null || keys.isEmpty()) {
+            throw new IllegalArgumentException("Keys cannot be null or empty");
+        }
+
+        if (keys.size() == 1) {
+            // 只有一个源key，直接复制
+            return redisTemplate.opsForSet().intersectAndStore(keys.get(0), Collections.emptyList(), destKey);
+        }
+
+        return redisTemplate.opsForSet().intersectAndStore(
+                keys.get(0),
+                keys.subList(1, keys.size()),
+                destKey);
+    }
+
+    /**
+     * 计算两个Set的差集（SDIFF）
+     * 返回存在于第一个Set但不存在于其他Set中的成员
+     * 
+     * @param key1  第一个Set key（被减数）
+     * @param key2  第二个Set key（减数）
+     * @param clazz 返回类型
+     * @return 差集结果
+     * 
+     *         示例：
+     *         Set1 = {a, b, c}
+     *         Set2 = {b, c, d}
+     *         difference(Set1, Set2) = {a} // Set1中有但Set2中没有的
+     */
+    public <T> Set<T> sDifference(String key1, String key2, Class<T> clazz) {
+        Set<Object> result = redisTemplate.opsForSet().difference(key1, key2);
+        if (result == null || result.isEmpty()) {
+            return Collections.emptySet();
+        }
+
+        Set<T> typedResult = new HashSet<>();
+        for (Object obj : result) {
+            typedResult.add(safeCast(obj, clazz));
+        }
+        return typedResult;
+    }
+
+    /**
+     * 计算多个Set的差集（SDIFF）
+     * 返回存在于第一个Set但不存在于其他所有Set中的成员
+     * 
+     * @param keys  Set key列表（第一个为被减数，其余为减数）
+     * @param clazz 返回类型
+     * @return 差集结果
+     */
+    public <T> Set<T> sDifference(List<String> keys, Class<T> clazz) {
+        if (keys == null || keys.isEmpty()) {
+            throw new IllegalArgumentException("Keys cannot be null or empty");
+        }
+
+        if (keys.size() == 1) {
+            // 只有一个key，返回该Set的所有成员
+            return sMembers(keys.get(0), clazz);
+        }
+
+        Set<Object> result = redisTemplate.opsForSet().difference(
+                keys.get(0),
+                keys.subList(1, keys.size()));
+
+        if (result == null || result.isEmpty()) {
+            return Collections.emptySet();
+        }
+
+        Set<T> typedResult = new HashSet<>();
+        for (Object obj : result) {
+            typedResult.add(safeCast(obj, clazz));
+        }
+        return typedResult;
+    }
+
+    /**
+     * 计算多个Set的差集并存储到目标Set（SDIFFSTORE）
+     * 
+     * @param destKey 目标Set key（存储差集结果）
+     * @param keys    源Set key列表（第一个为被减数，其余为减数）
+     * @return 存储到目标Set的成员数量
+     */
+    public Long sDifferenceAndStore(String destKey, List<String> keys) {
+        if (keys == null || keys.isEmpty()) {
+            throw new IllegalArgumentException("Keys cannot be null or empty");
+        }
+
+        if (keys.size() == 1) {
+            // 只有一个源key，直接复制
+            return redisTemplate.opsForSet().differenceAndStore(keys.get(0), Collections.emptyList(), destKey);
+        }
+
+        return redisTemplate.opsForSet().differenceAndStore(
+                keys.get(0),
+                keys.subList(1, keys.size()),
+                destKey);
+    }
+
+    /**
+     * 计算多个Set的并集（SUNION）
+     * 返回存在于任一Set中的所有成员（去重）
+     * 
+     * @param key1  第一个Set key
+     * @param key2  第二个Set key
+     * @param clazz 返回类型
+     * @return 并集结果
+     * 
+     *         示例：
+     *         Set1 = {a, b, c}
+     *         Set2 = {b, c, d}
+     *         union(Set1, Set2) = {a, b, c, d}
+     */
+    public <T> Set<T> sUnion(String key1, String key2, Class<T> clazz) {
+        Set<Object> result = redisTemplate.opsForSet().union(key1, key2);
+        if (result == null || result.isEmpty()) {
+            return Collections.emptySet();
+        }
+
+        Set<T> typedResult = new HashSet<>();
+        for (Object obj : result) {
+            typedResult.add(safeCast(obj, clazz));
+        }
+        return typedResult;
+    }
+
+    /**
+     * 计算多个Set的并集（SUNION）
+     * 
+     * @param keys  Set key列表
+     * @param clazz 返回类型
+     * @return 并集结果
+     */
+    public <T> Set<T> sUnion(List<String> keys, Class<T> clazz) {
+        if (keys == null || keys.isEmpty()) {
+            throw new IllegalArgumentException("Keys cannot be null or empty");
+        }
+
+        if (keys.size() == 1) {
+            // 只有一个key，返回该Set的所有成员
+            return sMembers(keys.get(0), clazz);
+        }
+
+        Set<Object> result = redisTemplate.opsForSet().union(
+                keys.get(0),
+                keys.subList(1, keys.size()));
+
+        if (result == null || result.isEmpty()) {
+            return Collections.emptySet();
+        }
+
+        Set<T> typedResult = new HashSet<>();
+        for (Object obj : result) {
+            typedResult.add(safeCast(obj, clazz));
+        }
+        return typedResult;
+    }
+
+    /**
+     * 计算多个Set的并集并存储到目标Set（SUNIONSTORE）
+     * 
+     * @param destKey 目标Set key（存储并集结果）
+     * @param keys    源Set key列表
+     * @return 存储到目标Set的成员数量
+     */
+    public Long sUnionAndStore(String destKey, List<String> keys) {
+        if (keys == null || keys.isEmpty()) {
+            throw new IllegalArgumentException("Keys cannot be null or empty");
+        }
+
+        if (keys.size() == 1) {
+            // 只有一个源key，直接复制
+            return redisTemplate.opsForSet().unionAndStore(keys.get(0), Collections.emptyList(), destKey);
+        }
+
+        return redisTemplate.opsForSet().unionAndStore(
+                keys.get(0),
+                keys.subList(1, keys.size()),
+                destKey);
+    }
+
     /* ========== ZSet（BoundZSetOperations） ========== */
     private BoundZSetOperations<String, Object> boundZSet(String key) {
         return redisTemplate.boundZSetOps(key);
@@ -791,13 +1026,23 @@ public class BoundUtil {
         return result;
     }
 
-    public <T> Set<T> zReverseRange(String key, long start, long end, Class<T> clazz) {
+    /**
+     * 按排名范围查询Sorted Set中的成员（ZREVRANGE，按分数从高到低）
+     * 返回有序列表，保持Redis返回的顺序
+     * 
+     * @param key   Sorted Set的key
+     * @param start 起始排名（0-based，包含）
+     * @param end   结束排名（0-based，包含）
+     * @param clazz 返回类型
+     * @return 成员列表（按分数从高到低排序）
+     */
+    public <T> List<T> zReverseRange(String key, long start, long end, Class<T> clazz) {
         Set<Object> values = boundZSet(key).reverseRange(start, end);
         if (values == null)
-            return Collections.emptySet();
+            return Collections.emptyList();
 
-        // 使用 LinkedHashSet 保持 Redis 返回的顺序
-        Set<T> result = new LinkedHashSet<>();
+        // 使用 ArrayList 保持 Redis 返回的顺序（按分数从高到低）
+        List<T> result = new ArrayList<>();
         for (Object value : values) {
             result.add(safeCast(value, clazz));
         }
@@ -830,20 +1075,74 @@ public class BoundUtil {
 
     /**
      * 按分数范围查询Sorted Set中的成员（ZRANGEBYSCORE）
+     * 返回有序列表，保持Redis返回的顺序（按分数从低到高）
      * 
      * @param key      Sorted Set的key
      * @param minScore 最小分数（包含）
      * @param maxScore 最大分数（包含）
      * @param clazz    返回类型
-     * @return 指定分数范围内的成员集合（按分数从低到高排序）
+     * @return 成员列表（按分数从低到高排序）
      */
-    public <T> Set<T> zRangeByScore(String key, double minScore, double maxScore, Class<T> clazz) {
+    public <T> List<T> zRangeByScore(String key, double minScore, double maxScore, Class<T> clazz) {
         Set<Object> values = boundZSet(key).rangeByScore(minScore, maxScore);
         if (values == null)
-            return Collections.emptySet();
+            return Collections.emptyList();
 
-        // 使用 LinkedHashSet 保持 Redis 返回的顺序（按分数从低到高）
-        Set<T> result = new LinkedHashSet<>();
+        // 使用 ArrayList 保持 Redis 返回的顺序（按分数从低到高）
+        List<T> result = new ArrayList<>();
+        for (Object value : values) {
+            result.add(safeCast(value, clazz));
+        }
+        return result;
+    }
+
+    /**
+     * 按分数范围查询Sorted Set中的成员及其分数（ZRANGEBYSCORE WITHSCORES）
+     * 返回包含成员和分数的Map，保持Redis返回的顺序（按分数从低到高）
+     * 
+     * @param key      Sorted Set的key
+     * @param minScore 最小分数（包含）
+     * @param maxScore 最大分数（包含）
+     * @param clazz    成员类型
+     * @return Map，key为成员，value为分数（按分数从低到高排序）
+     */
+    public <T> Map<T, Double> zRangeByScoreWithScores(String key, double minScore, double maxScore, Class<T> clazz) {
+        Set<TypedTuple<Object>> tuples = boundZSet(key)
+                .rangeByScoreWithScores(minScore, maxScore);
+        if (tuples == null)
+            return Collections.emptyMap();
+
+        // 使用 LinkedHashMap 保持 Redis 返回的顺序（按分数从低到高）
+        Map<T, Double> result = new LinkedHashMap<>();
+        for (TypedTuple<Object> tuple : tuples) {
+            T member = safeCast(tuple.getValue(), clazz);
+            Double score = tuple.getScore();
+            if (member != null && score != null) {
+                result.put(member, score);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 按分数范围查询Sorted Set中的成员（ZREVRANGEBYSCORE，按分数从高到低）
+     * 返回有序列表，保持Redis返回的顺序（按分数从高到低）
+     * 
+     * 注意：ZREVRANGEBYSCORE 的参数顺序是 (max, min)，表示从最大分数到最小分数
+     * 
+     * @param key      Sorted Set的key
+     * @param maxScore 最大分数（包含，在倒序查询中作为起始值）
+     * @param minScore 最小分数（包含，在倒序查询中作为结束值）
+     * @param clazz    返回类型
+     * @return 成员列表（按分数从高到低排序）
+     */
+    public <T> List<T> zRevRangeByScore(String key, double maxScore, double minScore, Class<T> clazz) {
+        Set<Object> values = boundZSet(key).reverseRangeByScore(minScore, maxScore);
+        if (values == null)
+            return Collections.emptyList();
+
+        // 使用 ArrayList 保持 Redis 返回的顺序（按分数从高到低）
+        List<T> result = new ArrayList<>();
         for (Object value : values) {
             result.add(safeCast(value, clazz));
         }
@@ -860,7 +1159,7 @@ public class BoundUtil {
      * @return 合并后目标Sorted Set的元素数量
      */
     public Long zUnionAndStore(String destKey, List<String> sourceKeys,
-            org.springframework.data.redis.connection.RedisZSetCommands.Aggregate aggregate) {
+            RedisZSetCommands.Aggregate aggregate) {
         if (sourceKeys == null || sourceKeys.isEmpty()) {
             throw new IllegalArgumentException("sourceKeys cannot be empty");
         }
@@ -880,6 +1179,105 @@ public class BoundUtil {
                 sourceKeys.subList(1, sourceKeys.size()),
                 destKey,
                 aggregate);
+    }
+
+    /**
+     * 统计Sorted Set中分数在指定范围内的成员数量（ZCOUNT）
+     * 
+     * @param key      Sorted Set的key
+     * @param minScore 最小分数（包含）
+     * @param maxScore 最大分数（包含）
+     * @return 分数范围内的成员数量
+     */
+    public Long zCount(String key, double minScore, double maxScore) {
+        return boundZSet(key).count(minScore, maxScore);
+    }
+
+    /**
+     * 按分数范围删除Sorted Set中的成员（ZREMRANGEBYSCORE）
+     * 删除分数在指定范围内的所有成员
+     * 
+     * @param key      Sorted Set的key
+     * @param minScore 最小分数（包含）
+     * @param maxScore 最大分数（包含）
+     * @return 被删除的成员数量
+     */
+    public Long zRemRangeByScore(String key, double minScore, double maxScore) {
+        return boundZSet(key).removeRangeByScore(minScore, maxScore);
+    }
+
+    /**
+     * 按排名范围删除Sorted Set中的成员（ZREMRANGEBYRANK）
+     * 删除排名在指定范围内的所有成员
+     * 
+     * @param key   Sorted Set的key
+     * @param start 起始排名（0-based，包含）
+     * @param end   结束排名（0-based，包含）
+     * @return 被删除的成员数量
+     */
+    public Long zRemRangeByRank(String key, long start, long end) {
+        return boundZSet(key).removeRange(start, end);
+    }
+
+    /**
+     * 合并多个Sorted Set并存储到目标key（ZUNIONSTORE，支持权重）
+     * 将多个源Sorted Set进行并集运算，结果存储到目标key
+     * 
+     * 权重计算：每个源SortedSet的分数会先乘以对应的权重，再进行聚合
+     * 例如：source1的分数 × weight1 + source2的分数 × weight2 + ...
+     * 
+     * @param destKey    目标key（存储合并结果）
+     * @param sourceKeys 源key列表（至少包含一个key）
+     * @param weights    权重列表（与sourceKeys对应，如果为null则所有权重为1.0）
+     * @param aggregate  聚合方式（MAX:取最大值，MIN:取最小值，SUM:求和）
+     * @return 合并后目标Sorted Set的元素数量
+     * 
+     * @throws IllegalArgumentException 如果weights不为null且长度与sourceKeys不一致
+     * 
+     *                                  示例：
+     *                                  sourceKeys = ["sort:price", "sort:sales",
+     *                                  "sort:rating"]
+     *                                  weights = [0.3, 0.5, 0.2]
+     *                                  结果：product1的最终分数 = price×0.3 + sales×0.5 +
+     *                                  rating×0.2
+     */
+    public Long zUnionAndStore(String destKey, List<String> sourceKeys,
+            List<Double> weights, RedisZSetCommands.Aggregate aggregate) {
+        if (sourceKeys == null || sourceKeys.isEmpty()) {
+            throw new IllegalArgumentException("sourceKeys cannot be empty");
+        }
+
+        if (weights != null && weights.size() != sourceKeys.size()) {
+            throw new IllegalArgumentException(
+                    "Weights size (" + weights.size() + ") must match sourceKeys size (" + sourceKeys.size() + ")");
+        }
+
+        if (sourceKeys.size() == 1) {
+            // 只有一个源key，直接复制
+            return redisTemplate.opsForZSet().unionAndStore(
+                    sourceKeys.get(0),
+                    Collections.emptyList(),
+                    destKey);
+        }
+
+        // 多个源key，执行并集运算（支持权重）
+        if (weights != null && !weights.isEmpty()) {
+            // Spring Data Redis的unionAndStore方法支持权重参数
+            // 需要创建RedisZSetCommands.Weights对象
+            RedisZSetCommands.Weights redisWeights = RedisZSetCommands.Weights.of(
+                    weights.stream().mapToDouble(Double::doubleValue).toArray());
+
+            // 使用带权重的unionAndStore方法
+            return redisTemplate.opsForZSet().unionAndStore(
+                    sourceKeys.get(0),
+                    sourceKeys.subList(1, sourceKeys.size()),
+                    destKey,
+                    aggregate,
+                    redisWeights);
+        } else {
+            // 没有权重，使用默认方法
+            return zUnionAndStore(destKey, sourceKeys, aggregate);
+        }
     }
 
     /* ========== Hash（BoundHashOperations） ========== */
@@ -1055,8 +1453,106 @@ public class BoundUtil {
         return redisTemplate.delete(Arrays.asList(keys));
     }
 
+    /**
+     * 使用 KEYS 命令查找匹配的键（⚠️ 生产环境不推荐使用）
+     * 
+     * 警告：KEYS 命令会阻塞 Redis 服务器，如果数据库中有大量键，可能导致：
+     * - Redis 服务器阻塞数秒甚至更长时间
+     * - 其他客户端请求超时
+     * - 影响整个系统的响应性能
+     * 
+     * 推荐使用 {@link #scanKeys(String)} 或 {@link #scanKeys(String, int)} 方法
+     * 
+     * @param pattern 匹配模式（支持通配符：*、?、[]）
+     * @return 匹配的键集合
+     * 
+     * @see #scanKeys(String)
+     * @see #scanKeys(String, int)
+     */
     public Set<String> keys(String pattern) {
         return redisTemplate.keys(pattern);
+    }
+
+    /**
+     * 使用 SCAN 命令安全地遍历匹配的键（推荐用于生产环境）
+     * 
+     * SCAN 命令是增量式的，不会阻塞 Redis 服务器，适合在生产环境中使用。
+     * 
+     * @param pattern 匹配模式（支持通配符：*、?、[]），null 或 "*" 表示匹配所有键
+     * @return 匹配的键集合
+     * 
+     * @see #scanKeys(String, int)
+     * @see #scanKeysWithCallback(String, int, java.util.function.Consumer)
+     */
+    public Set<String> scanKeys(String pattern) {
+        return scanKeys(pattern, 100);
+    }
+
+    /**
+     * 使用 SCAN 命令安全地遍历匹配的键（推荐用于生产环境）
+     * 
+     * @param pattern 匹配模式（支持通配符：*、?、[]），null 或 "*" 表示匹配所有键
+     * @param count   每次扫描的建议数量（实际返回数量可能更多或更少）
+     *                建议值：小数据集 10-50，大数据集 100-1000
+     * @return 匹配的键集合
+     * 
+     * @see #scanKeysWithCallback(String, int, java.util.function.Consumer)
+     */
+    public Set<String> scanKeys(String pattern, int count) {
+        Set<String> keys = new HashSet<>();
+        ScanOptions options = ScanOptions.scanOptions()
+                .match(pattern != null ? pattern : "*")
+                .count(count)
+                .build();
+
+        try (Cursor<String> cursor = redisTemplate.scan(options)) {
+            while (cursor.hasNext()) {
+                keys.add(cursor.next());
+            }
+        } catch (Exception e) {
+            log.error("Failed to scan keys with pattern: {}, count: {}", pattern, count, e);
+            throw new CacheOperationException("Failed to scan keys", e);
+        }
+        return keys;
+    }
+
+    /**
+     * 使用 SCAN 命令遍历键，并通过回调函数处理每批键（适合大数据量场景）
+     * 
+     * 这种方式可以避免将所有键加载到内存中，适合处理大量键的场景。
+     * 
+     * @param pattern  匹配模式（支持通配符：*、?、[]），null 或 "*" 表示匹配所有键
+     * @param count    每次扫描的建议数量
+     * @param callback 处理每批键的回调函数（参数为当前批次的键列表）
+     * 
+     * @see #scanKeys(String)
+     * @see #scanKeys(String, int)
+     */
+    public void scanKeysWithCallback(String pattern, int count,
+            java.util.function.Consumer<List<String>> callback) {
+        ScanOptions options = ScanOptions.scanOptions()
+                .match(pattern != null ? pattern : "*")
+                .count(count)
+                .build();
+
+        List<String> batch = new ArrayList<>();
+        try (Cursor<String> cursor = redisTemplate.scan(options)) {
+            while (cursor.hasNext()) {
+                batch.add(cursor.next());
+                // 每收集到一定数量的键，调用一次回调
+                if (batch.size() >= count) {
+                    callback.accept(new ArrayList<>(batch));
+                    batch.clear();
+                }
+            }
+            // 处理最后一批
+            if (!batch.isEmpty()) {
+                callback.accept(batch);
+            }
+        } catch (Exception e) {
+            log.error("Failed to scan keys with callback, pattern: {}, count: {}", pattern, count, e);
+            throw new CacheOperationException("Failed to scan keys with callback", e);
+        }
     }
 
     /* ========== 便捷方法 ========== */

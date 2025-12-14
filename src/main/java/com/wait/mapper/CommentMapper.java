@@ -69,5 +69,11 @@ public interface CommentMapper {
      * 批量查询帖子的评论数
      */
     List<Comment> countByPostIds(@Param("postIds") List<Long> postIds);
+
+    /**
+     * 查询所有有评论的帖子ID和评论数（用于定时同步）
+     * @return 帖子ID和评论数的映射（Comment对象中postId存储帖子ID，likeCount存储评论数）
+     */
+    List<Comment> selectAllPostCommentCounts();
 }
 

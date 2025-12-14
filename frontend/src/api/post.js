@@ -10,10 +10,11 @@ export function createPost(data) {
 }
 
 // 获取帖子详情
-export function getPostById(postId) {
+export function getPostById(postId, userId = null) {
   return request({
     url: `/api/posts/${postId}`,
     method: "get",
+    params: userId ? { userId } : {},
   });
 }
 

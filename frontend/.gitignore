@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+*.local
+
+# Logs (npm/yarn/pnpm 特定的日志文件，根目录的 *.log 已覆盖通用日志)
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+
+# E2E testing
+/cypress/videos/
+/cypress/screenshots/
+/cypress/downloads/
+
+# Editor directories and files
+# 注意：根目录的 .gitignore 已经忽略了 .vscode/，这里使用否定规则保留 extensions.json
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# TypeScript
+*.tsbuildinfo
+
+# Vite
+.vite/

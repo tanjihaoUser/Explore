@@ -25,6 +25,26 @@
       <span>排行榜</span>
     </el-menu-item>
 
+    <el-menu-item index="/discover">
+      <el-icon><Star /></el-icon>
+      <span>发现</span>
+    </el-menu-item>
+
+    <el-menu-item index="/statistics">
+      <el-icon><DataAnalysis /></el-icon>
+      <span>流量走势</span>
+    </el-menu-item>
+
+    <el-menu-item index="/browse-history">
+      <el-icon><Clock /></el-icon>
+      <span>浏览记录</span>
+    </el-menu-item>
+
+    <el-menu-item index="/uv-statistics">
+      <el-icon><DataAnalysis /></el-icon>
+      <span>UV统计</span>
+    </el-menu-item>
+
     <el-menu-item index="/create-post">
       <el-icon><Edit /></el-icon>
       <span>发布新帖</span>

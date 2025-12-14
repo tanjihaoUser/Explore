@@ -29,13 +29,20 @@ public class TypeCacheController {
     @Autowired
     private BoundUtil boundUtil;
 
+    /**
+     * 测试接口：遍历所有键（仅用于测试）
+     * ⚠️ 警告：在生产环境中应使用 SCAN 命令替代 KEYS
+     * 
+     * @return 所有键的集合
+     */
     @GetMapping("/testTimeout")
     public Set<String> testTimeout() {
         long start = System.currentTimeMillis();
         try {
-            Set<String> result = boundUtil.keys("*");
+            // 使用 SCAN 命令替代 KEYS，避免阻塞 Redis 服务器
+            Set<String> result = boundUtil.scanKeys("*", 100);
             long end = System.currentTimeMillis();
-            log.info("testTimeout completed in {} ms", end - start);
+            log.info("testTimeout completed in {} ms (using SCAN)", end - start);
             return result;
         } catch (Exception e) {
             long end = System.currentTimeMillis();

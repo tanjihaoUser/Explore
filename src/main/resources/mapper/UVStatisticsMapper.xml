@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wait.mapper.UVStatisticsMapper">
+
+    <resultMap id="UVStatisticsResultMap" type="com.wait.entity.domain.UVStatistics">
+        <id column="id" property="id"/>
+        <result column="resource_type" property="resourceType"/>
+        <result column="resource_id" property="resourceId"/>
+        <result column="date" property="date"/>
+        <result column="visitor_id" property="visitorId"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <!-- 批量插入 UV 统计数据 -->
+    <!-- 注意：created_at 和 updated_at 由数据库自动处理，不需要在插入时指定 -->
+    <insert id="batchInsert" parameterType="java.util.List">
+        INSERT INTO uv_statistics (resource_type, resource_id, date, visitor_id)
+        VALUES
+        <foreach collection="statistics" item="item" separator=",">
+            (#{item.resourceType}, #{item.resourceId}, #{item.date}, #{item.visitorId})
+        </foreach>
+        ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP
+    </insert>
+
+    <!-- 查询指定资源和日期的 UV 统计数据 -->
+    <select id="selectByResourceAndDate" resultMap="UVStatisticsResultMap">
+        SELECT id, resource_type, resource_id, date, visitor_id, created_at, updated_at
+        FROM uv_statistics
+        WHERE resource_type = #{resourceType}
+        AND resource_id = #{resourceId}
+        AND date = #{date}
+        ORDER BY created_at DESC
+    </select>
+
+    <!-- 查询指定资源和日期范围的 UV 统计数据 -->
+    <select id="selectByResourceAndDateRange" resultMap="UVStatisticsResultMap">
+        SELECT id, resource_type, resource_id, date, visitor_id, created_at, updated_at
+        FROM uv_statistics
+        WHERE resource_type = #{resourceType}
+        AND resource_id = #{resourceId}
+        AND date >= #{startDate}
+        AND date &lt;= #{endDate}
+        ORDER BY date DESC, created_at DESC
+    </select>
+
+    <!-- 统计指定资源和日期的独立访客数 -->
+    <select id="countDailyUV" resultType="java.lang.Long">
+        SELECT COUNT(DISTINCT visitor_id)
+        FROM uv_statistics
+        WHERE resource_type = #{resourceType}
+        AND resource_id = #{resourceId}
+        AND date = #{date}
+    </select>
+
+    <!-- 统计指定资源和日期范围的独立访客数（去重） -->
+    <select id="countUVByDateRange" resultType="java.lang.Long">
+        SELECT COUNT(DISTINCT visitor_id)
+        FROM uv_statistics
+        WHERE resource_type = #{resourceType}
+        AND resource_id = #{resourceId}
+        AND date >= #{startDate}
+        AND date &lt;= #{endDate}
+    </select>
+
+    <!-- 删除指定日期之前的数据 -->
+    <delete id="deleteByExpireDate">
+        DELETE FROM uv_statistics
+        WHERE date &lt; #{expireDate}
+    </delete>
+
+</mapper>
+
+

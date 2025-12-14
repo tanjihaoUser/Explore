@@ -10,6 +10,7 @@ import javax.annotation.PreDestroy;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
@@ -23,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Configuration
 @EnableAsync
+@EnableScheduling
 @Slf4j
 public class TaskExecutorConfig {
 
@@ -56,6 +58,25 @@ public class TaskExecutorConfig {
         executor.setQueueCapacity(2000);
         executor.setThreadNamePrefix("cache-async-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());
+        // 优雅关闭配置
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(60);
+        executor.initialize();
+        return executor;
+    }
+
+    /**
+     * 通知服务专用的线程池
+     * 用于异步发送通知，不阻塞主业务流程
+     */
+    @Bean("notificationExecutor")
+    public ThreadPoolTaskExecutor notificationExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(5);
+        executor.setMaxPoolSize(20);
+        executor.setQueueCapacity(5000);
+        executor.setThreadNamePrefix("notification-async-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         // 优雅关闭配置
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(60);

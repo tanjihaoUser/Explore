@@ -2,7 +2,6 @@ package com.wait.service.impl;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 import org.springframework.stereotype.Service;
 
@@ -58,28 +57,59 @@ public class RankingServiceImpl implements RankingService {
     }
 
     @Override
+    public void onUncomment(Long postId) {
+        boundUtil.zIncrBy(RANKING_COMMENTS, postId, -1.0);
+        log.debug("Updated comments ranking for post {} (uncomment)", postId);
+    }
+
+    @Override
     public List<Long> getLikesRanking(int page, int pageSize) {
         long start = (page - 1) * pageSize;
         long end = start + pageSize - 1;
-        Set<Long> postIds = boundUtil.zReverseRange(RANKING_LIKES, start, end, Long.class);
-        return new ArrayList<>(postIds);
+        List<Long> postIds = boundUtil.zReverseRange(RANKING_LIKES, start, end, Long.class);
+        return postIds != null ? postIds : new ArrayList<>();
     }
 
     @Override
     public List<Long> getFavoritesRanking(int page, int pageSize) {
         long start = (page - 1) * pageSize;
         long end = start + pageSize - 1;
-        Set<Long> postIds = boundUtil.zReverseRange(RANKING_FAVORITES, start, end, Long.class);
-        return new ArrayList<>(postIds);
+        List<Long> postIds = boundUtil.zReverseRange(RANKING_FAVORITES, start, end, Long.class);
+        return postIds != null ? postIds : new ArrayList<>();
     }
 
     @Override
     public List<Long> getCommentsRanking(int page, int pageSize) {
         long start = (page - 1) * pageSize;
         long end = start + pageSize - 1;
-        Set<Long> postIds = boundUtil.zReverseRange(RANKING_COMMENTS, start, end, Long.class);
-        return new ArrayList<>(postIds);
+        List<Long> postIds = boundUtil.zReverseRange(RANKING_COMMENTS, start, end, Long.class);
+        return postIds != null ? postIds : new ArrayList<>();
+    }
+
+    @Override
+    public Long getLikeCount(Long postId) {
+        if (postId == null) {
+            return 0L;
+        }
+        Double score = boundUtil.zScore(RANKING_LIKES, postId);
+        return score != null ? score.longValue() : 0L;
+    }
+
+    @Override
+    public Long getFavoriteCount(Long postId) {
+        if (postId == null) {
+            return 0L;
+        }
+        Double score = boundUtil.zScore(RANKING_FAVORITES, postId);
+        return score != null ? score.longValue() : 0L;
+    }
+
+    @Override
+    public Long getCommentCount(Long postId) {
+        if (postId == null) {
+            return 0L;
+        }
+        Double score = boundUtil.zScore(RANKING_COMMENTS, postId);
+        return score != null ? score.longValue() : 0L;
     }
 }
-
-
